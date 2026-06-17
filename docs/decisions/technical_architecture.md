@@ -160,12 +160,14 @@ nl-analytics-dashboard/
 │   │   └── query_repository.py
 │   │
 │   ├── models/
+│   │   ├── base.py
 │   │   ├── customer.py
 │   │   ├── product.py
 │   │   ├── order.py
 │   │   └── order_item.py
 │   │
 │   ├── schemas/
+│   │   ├── entities.py
 │   │   ├── requests.py
 │   │   ├── responses.py
 │   │   ├── sql_result.py
@@ -176,9 +178,7 @@ nl-analytics-dashboard/
 │       ├── validators.py
 │       ├── sql_helpers.py
 │       ├── chart_helpers.py
-│       ├── database_initializer.py
-│       ├── sample_data_generator.py
-│       └── seed_generator.py
+│       └── database_initializer.py
 │
 ├── website/                      # Streamlit UI (API client)
 │   └── app.py                    # uv run streamlit run website/app.py
@@ -441,17 +441,15 @@ Responsibilities:
 
 # 12. Database Initialization
 
-The application shall automatically initialize SQLite on first startup.
+The application shall initialize SQLite on startup via the bootstrap (`starter.py` → `create_app`).
 
 Initialization process:
 
-1. Create database
-2. Create schema
-3. Create tables
-4. Generate sample data
-5. Seed database
+1. Create database (`data/superstore.db`)
+2. Create tables from the SQLAlchemy models
+3. Load `data/database.csv` into the normalized tables — once, only if the database is empty
 
-Database initialization utilities shall reside inside:
+The wide Superstore CSV is normalized into `customers`, `products`, `orders`, and `order_items`. The initializer (`DatabaseInitializer`) shall reside inside:
 
 app/utils/
 
