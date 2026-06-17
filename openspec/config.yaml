@@ -1,0 +1,49 @@
+schema: spec-driven
+
+# Project context (shown to AI when creating artifacts).
+# Concise, pointer-style — full detail lives in the source-of-truth files.
+context: |
+  Product: Natural Language Analytics Dashboard. Business users ask plain-English
+  questions; the app generates read-only SQL, runs it, and returns the clearest form —
+  a chart for multi-row data or a written sentence for a single value — plus actionable
+  insights grounded in the returned data and one-click follow-up questions. Streamlit UI;
+  no SQL knowledge required. (docs/FRS.md §1-2)
+
+  Tech stack: Python >=3.12; uv for packaging/env (pyproject.toml, uv.lock); Streamlit (UI);
+  LangChain (LLM); LangGraph (state-driven workflow orchestration); SQLAlchemy + SQLite;
+  Pandas; Plotly; Pydantic (typed contracts). (docs/SDS.md §3)
+
+  Architecture constraints (docs/SDS.md §2,6-9; docs/FRS.md §9,13,14):
+  - Layered + LangGraph multi-agent: User -> Streamlit -> LangGraph -> Agents -> Services
+    -> Repositories -> SQLite.
+  - Services stay independent of LangGraph; repositories hold no business logic.
+  - The SQL Agent is the ONLY component allowed to touch the database.
+  - Agents communicate via Pydantic schemas only — never unstructured text.
+  - Read-only SQL only: SELECT allowed; INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE blocked.
+  - Out of scope: authentication/authorization, forecasting/predictive modeling, autonomous
+    actions. Insights must be grounded in returned data — never fabricate figures or claims.
+
+  Team conventions (CLAUDE.md):
+  - Class-based/OOP for application code (agents, services, repositories, nodes are classes
+    with one responsibility; constructor-injected deps; one primary class per module).
+  - Prompts live in prompts/ — never hardcoded in agents.
+  - Use the centralized logger from config/log_config.py — never print().
+  - Docstrings on every module, public class, and public function/method.
+  - Conventional Commits (type(scope): subject); branches type/short-desc.
+
+  Quality standards (CLAUDE.md §7; docs/FRS.md §12):
+  - Gates in order before commit: `uv run ruff check .` -> `uv run ruff format --check .`
+    -> `uv run pytest`. pytest is the active gate until ruff is added (`uv add --dev ruff`).
+  - No build step (Streamlit app). Typical query response < 10s; datasets up to ~1M rows.
+
+  Source of truth (these win on conflict): AGENTS.md, CLAUDE.md, docs/FRS.md, docs/SDS.md.
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
