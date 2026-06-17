@@ -13,5 +13,6 @@ High-level (epic-level) issues derived from `docs/FRS.md`. These markdown files 
 | 7 | [Suggested Follow-Up Questions](07-suggested-followup-questions.md) | §6.5; FR-10 | `area:insights` |
 | 8 | [Query History (session)](08-query-history.md) | §6.7, §7; FR-11 | `area:ui` |
 | 9 | [Error Handling & Messaging](09-error-handling-messaging.md) | §10, §12 | `area:ui` |
+| 10 | [API Layer (FastAPI routes & Chat Service)](10-api-layer-fastapi.md) | SDS §9.3; tech-arch §15 | `area:api` |
 
 All issues also carry the `enhancement` label.

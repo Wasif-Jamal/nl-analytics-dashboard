@@ -7,6 +7,7 @@ The Natural Language Analytics Dashboard shall use a layered architecture combin
 The architecture separates:
 
 * Presentation Layer
+* API Layer
 * Workflow Orchestration Layer
 * Agent Layer
 * Service Layer
@@ -22,6 +23,10 @@ This separation improves maintainability, testability, scalability, and future e
 ## Frontend
 
 * Streamlit
+
+## API Framework
+
+* FastAPI (ASGI, served via Uvicorn)
 
 ## LLM Framework
 
@@ -63,6 +68,14 @@ Streamlit UI
 
 ↓
 
+FastAPI (app/routes/)
+
+↓
+
+Chat Service
+
+↓
+
 LangGraph Workflow
 
 ↓
@@ -91,74 +104,84 @@ nl-analytics-dashboard/
 ├── pyproject.toml
 ├── uv.lock
 ├── .python-version
-├── starter.py
-├── app.py
+├── starter.py                    # app bootstrap
 │
 ├── .env
 ├── .env.example
 │
-├── config/
-│   ├── env_config.py
-│   ├── db_config.py
-│   ├── log_config.py
-│   └── llm_config.py
-│
-├── agents/
-│   ├── sql_agent.py
-│   ├── visualization_agent.py
-│   ├── insight_agent.py
-│   └── followup_agent.py
-│
-├── prompts/
-│   ├── sql_prompt.py
-│   ├── visualization_prompt.py
-│   ├── insight_prompt.py
-│   └── followup_prompt.py
-│
-├── orchestration/
-│   ├── graph.py
-│   ├── state.py
-│   ├── conditional_edges.py
+├── app/                          # complete backend
+│   ├── main.py                   # FastAPI ASGI entry (uv run uvicorn app.main:app)
 │   │
-│   └── nodes/
-│       ├── sql_generation_node.py
-│       ├── sql_validation_node.py
-│       ├── query_execution_node.py
-│       ├── visualization_node.py
-│       ├── insight_node.py
-│       ├── followup_node.py
-│       └── response_node.py
+│   ├── routes/
+│   │   ├── chat_routes.py
+│   │   └── health.py
+│   │
+│   ├── config/
+│   │   ├── env_config.py
+│   │   ├── db_config.py
+│   │   ├── log_config.py
+│   │   └── llm_config.py
+│   │
+│   ├── agents/
+│   │   ├── sql_agent.py
+│   │   ├── visualization_agent.py
+│   │   ├── insight_agent.py
+│   │   └── followup_agent.py
+│   │
+│   ├── prompts/
+│   │   ├── sql_prompt.py
+│   │   ├── visualization_prompt.py
+│   │   ├── insight_prompt.py
+│   │   └── followup_prompt.py
+│   │
+│   ├── orchestration/
+│   │   ├── graph.py
+│   │   ├── state.py
+│   │   ├── conditional_edges.py
+│   │   │
+│   │   └── nodes/
+│   │       ├── sql_generation_node.py
+│   │       ├── sql_validation_node.py
+│   │       ├── query_execution_node.py
+│   │       ├── visualization_node.py
+│   │       ├── insight_node.py
+│   │       ├── followup_node.py
+│   │       └── response_node.py
+│   │
+│   ├── services/
+│   │   ├── chat_service.py
+│   │   ├── analytics_service.py
+│   │   ├── sql_service.py
+│   │   ├── visualization_service.py
+│   │   ├── insight_service.py
+│   │   └── followup_service.py
+│   │
+│   ├── repositories/
+│   │   └── query_repository.py
+│   │
+│   ├── models/
+│   │   ├── customer.py
+│   │   ├── product.py
+│   │   ├── order.py
+│   │   └── order_item.py
+│   │
+│   ├── schemas/
+│   │   ├── requests.py
+│   │   ├── responses.py
+│   │   ├── sql_result.py
+│   │   ├── chart_config.py
+│   │   └── workflow_state.py
+│   │
+│   └── utils/
+│       ├── validators.py
+│       ├── sql_helpers.py
+│       ├── chart_helpers.py
+│       ├── database_initializer.py
+│       ├── sample_data_generator.py
+│       └── seed_generator.py
 │
-├── services/
-│   ├── analytics_service.py
-│   ├── sql_service.py
-│   ├── visualization_service.py
-│   ├── insight_service.py
-│   └── followup_service.py
-│
-├── repositories/
-│   └── query_repository.py
-│
-├── models/
-│   ├── customer.py
-│   ├── product.py
-│   ├── order.py
-│   └── order_item.py
-│
-├── schemas/
-│   ├── requests.py
-│   ├── responses.py
-│   ├── sql_result.py
-│   ├── chart_config.py
-│   └── workflow_state.py
-│
-├── utils/
-│   ├── validators.py
-│   ├── sql_helpers.py
-│   ├── chart_helpers.py
-│   ├── database_initializer.py
-│   ├── sample_data_generator.py
-│   └── seed_generator.py
+├── website/                      # Streamlit UI (API client)
+│   └── app.py                    # uv run streamlit run website/app.py
 │
 ├── tests/
 │   ├── agents/
@@ -318,7 +341,7 @@ Responsibilities:
 
 * Aggregate outputs
 * Build final response
-* Return response to Streamlit UI
+* Return the aggregated response to the API layer (via the Chat Service), which serves it to the Streamlit UI
 
 ---
 
@@ -360,7 +383,7 @@ Responsibilities:
 * Insight preparation
 * Workflow support
 
-Services shall remain independent of LangGraph.
+The domain services (`sql_service`, `visualization_service`, `insight_service`, `followup_service`) shall remain independent of LangGraph. The Chat Service (`app/services/chat_service.py`) is the exception — it is the single component that invokes the workflow; see §15.
 
 ---
 
@@ -370,7 +393,7 @@ Each agent owns a dedicated prompt.
 
 Prompt files shall be stored under:
 
-prompts/
+app/prompts/
 
 Prompt text shall never be hardcoded inside agent implementations.
 
@@ -380,7 +403,7 @@ Prompt text shall never be hardcoded inside agent implementations.
 
 Configuration shall be centralized under:
 
-config/
+app/config/
 
 ## env_config.py
 
@@ -430,7 +453,7 @@ Initialization process:
 
 Database initialization utilities shall reside inside:
 
-utils/
+app/utils/
 
 ---
 
@@ -466,3 +489,35 @@ Responsibilities:
 Project metadata and dependencies shall be maintained in pyproject.toml.
 
 requirements.txt shall not be used as the primary dependency source.
+
+---
+
+# 15. API Layer and Chat Service
+
+The application exposes an HTTP API built with **FastAPI**. The backend lives entirely under `app/`; the Streamlit UI under `website/` is a **client** of this API and does not invoke the workflow in-process.
+
+## FastAPI Routes (`app/routes/`)
+
+Responsibilities:
+
+* Define the HTTP endpoints (routers) — submit a question, return the analytics response, health check.
+* Validate request/response payloads using the Pydantic schemas in `app/schemas/` (`requests.py`, `responses.py`).
+* Contain no business logic — routes delegate to the Chat Service.
+
+The FastAPI ASGI application is assembled in `app/main.py` and served via Uvicorn (`uv run uvicorn app.main:app`).
+
+## Chat Service (`app/services/chat_service.py`)
+
+Responsibilities:
+
+* Act as the application entry point that the API routes call.
+* Bridge the API layer and the LangGraph workflow: invoke the workflow (graph) with the user question and return the aggregated response.
+
+The domain services (`sql_service`, `visualization_service`, `insight_service`, `followup_service`) remain **independent of LangGraph**. The Chat Service is the single sanctioned component that runs the workflow.
+
+## Request Flow
+
+```text
+User → Streamlit UI → FastAPI (routes/) → Chat Service → LangGraph Workflow
+     → Specialized Agents → Services → Repositories → SQLite
+```

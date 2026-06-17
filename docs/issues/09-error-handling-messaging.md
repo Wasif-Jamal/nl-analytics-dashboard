@@ -19,6 +19,7 @@ The system must handle failure cases gracefully and present clear, consistent, u
 |---|---|
 | Any of the four §10 conditions occurs | The corresponding standard message above is displayed |
 | An unexpected/unclassified failure | A safe generic message is shown; the app stays responsive (no crash) |
+| Failure surfaces through the API layer (issue #10) | The standard message is carried in a safe API error payload; no stack trace leaked to the UI |
 
 ## Out of Scope
 

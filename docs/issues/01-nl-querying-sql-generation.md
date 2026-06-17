@@ -4,7 +4,7 @@ Business users must be able to type a plain-English question and have the system
 
 ## Acceptance Criteria
 
-1. The dashboard exposes a natural-language question input and an execute action.
+1. The dashboard exposes a natural-language question input and an execute action; the UI submits the question via the backend API (FastAPI route → Chat Service, see issue #10).
 2. Submitting a representative question (e.g. "Show monthly revenue trend for 2025", "Top 10 products by revenue") produces a corresponding SQL query.
 3. The generated SQL is displayed to the user before/with results (SQL Display panel).
 4. Generation targets only the known schema entities (Orders, Products, Customers, Categories, Regions).

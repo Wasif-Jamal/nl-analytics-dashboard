@@ -14,22 +14,26 @@ Natural Language Analytics Dashboard: business users ask questions in plain Engl
 
 ## 2. Repository Structure
 
-Single **uv** project — **not** a monorepo, so there is no `/packages/shared`. Package directories exist as empty packages; files listed are the planned modules:
+Single **uv** project — **not** a monorepo, so there is no `/packages/shared`. The backend lives under `app/`; the UI under `website/`. Package directories exist as empty packages; files listed are the planned modules:
 
 | Path | Contents |
 |---|---|
-| `app.py`, `starter.py` | Streamlit entry point / app bootstrap *(not yet created)* |
-| `config/` | `env_config`, `db_config`, `log_config`, `llm_config` |
-| `agents/` | `sql_agent`, `visualization_agent`, `insight_agent`, `followup_agent` |
-| `prompts/` | One prompt module per agent (text never hardcoded in agents) |
-| `orchestration/` | LangGraph `graph`, `state`, `conditional_edges`, and `nodes/` |
-| `orchestration/nodes/` | `sql_generation`, `sql_validation`, `query_execution`, `visualization`, `insight`, `followup`, `response` |
-| `services/` | Business logic: `analytics`, `sql`, `visualization`, `insight`, `followup` |
-| `repositories/` | `query_repository` — SQL execution + SQLAlchemy sessions only |
-| `models/` | SQLAlchemy models: `customer`, `product`, `order`, `order_item` |
-| `schemas/` | Pydantic contracts: `requests`, `responses`, `sql_result`, `chart_config`, `workflow_state` |
-| `utils/` | `validators`, `sql_helpers`, `chart_helpers`, DB init + sample-data/seed generators |
-| `tests/` | `agents/`, `services/`, `repositories/`, `workflows/`, `integration/` |
+| `starter.py` | App bootstrap (root) *(not yet created)* |
+| `app/` | **Complete backend** (single package) |
+| `app/main.py` | FastAPI ASGI entry — `uv run uvicorn app.main:app` |
+| `app/routes/` | FastAPI routers: `chat_routes`, `health` — HTTP endpoints; no business logic |
+| `app/config/` | `env_config`, `db_config`, `log_config`, `llm_config` |
+| `app/agents/` | `sql_agent`, `visualization_agent`, `insight_agent`, `followup_agent` |
+| `app/prompts/` | One prompt module per agent (text never hardcoded in agents) |
+| `app/orchestration/` | LangGraph `graph`, `state`, `conditional_edges`, and `nodes/` |
+| `app/orchestration/nodes/` | `sql_generation`, `sql_validation`, `query_execution`, `visualization`, `insight`, `followup`, `response` |
+| `app/services/` | Business logic: `chat` (API↔workflow bridge), `analytics`, `sql`, `visualization`, `insight`, `followup` |
+| `app/repositories/` | `query_repository` — SQL execution + SQLAlchemy sessions only |
+| `app/models/` | SQLAlchemy models: `customer`, `product`, `order`, `order_item` |
+| `app/schemas/` | Pydantic contracts: `requests`, `responses`, `sql_result`, `chart_config`, `workflow_state` |
+| `app/utils/` | `validators`, `sql_helpers`, `chart_helpers`, DB init + sample-data/seed generators |
+| `website/app.py` | Streamlit UI (API client) — `uv run streamlit run website/app.py` |
+| `tests/` | `agents/`, `services/`, `repositories/`, `workflows/`, `integration/` (root; import from `app.*`) |
 | `docs/` | FRS, SDS, spec, `decisions/technical_architecture.md` |
 
 ---
@@ -40,7 +44,8 @@ Single **uv** project — **not** a monorepo, so there is no `/packages/shared`.
 |---|---|
 | Language | Python ≥ 3.12 |
 | Package & env management | uv (`pyproject.toml`, `uv.lock`) |
-| Frontend / UI | Streamlit |
+| Frontend / UI | Streamlit (`website/`) |
+| API framework | FastAPI (ASGI, served via Uvicorn) |
 | LLM framework | LangChain |
 | Workflow orchestration | LangGraph (state-driven graph) |
 | Database | SQLite |
@@ -58,33 +63,35 @@ uv-based (target — wire up as code lands):
 ```bash
 uv sync                              # install/lock dependencies
 uv add <package>                     # add a dependency (updates pyproject + uv.lock)
-uv run streamlit run app.py          # dev server (the app)
+uv run uvicorn app.main:app --reload # backend API (FastAPI)
+uv run streamlit run website/app.py  # UI (Streamlit, API client)
 uv run pytest                        # run the test suite
 ```
 
-`requirements.txt` is **not** used as the primary dependency source. No lint tool is specified yet — add config before assuming one exists.
+`requirements.txt` is **not** used as the primary dependency source. Linting/formatting uses **ruff** and tests use **pytest** (both dev dependencies); run via `uv run`.
 
 ---
 
 ## 5. Architecture Patterns
 
-Layered architecture + a LangGraph state-driven multi-agent workflow. Six layers:
+Layered architecture + a LangGraph state-driven multi-agent workflow:
 
 ```
-User → Streamlit UI → LangGraph Workflow → Agents → Services → Repositories → SQLite
+User → Streamlit UI (website/) → FastAPI (app/routes/) → Chat Service → LangGraph Workflow → Agents → Services → Repositories → SQLite
 ```
 
 Boundary rules (enforce these):
-- **Services** contain business logic and stay **independent of LangGraph**.
+- **Routes** (`app/routes/`) expose HTTP endpoints and contain no business logic — they delegate to the **Chat Service** (`app/services/chat_service.py`), the single component that invokes the LangGraph workflow.
+- **Domain services** (sql/visualization/insight/followup) contain business logic and stay **independent of LangGraph**.
 - **Repositories** only execute SQL / manage sessions / return results — **no business logic**.
 - The **SQL Agent is the only component allowed to touch the database**.
-- Agents own their prompts (in `prompts/`) and never hardcode prompt text.
+- Agents own their prompts (in `app/prompts/`) and never hardcode prompt text.
 
 ---
 
 ## 6. Workflow & Agent Contracts
 
-*(This project has no HTTP/REST/GraphQL API. The "interface contract" is the workflow state + Pydantic schemas exchanged between nodes/agents.)*
+*(The backend is exposed over HTTP via FastAPI (`app/routes/`), with request/response models in `app/schemas/`. Internally, the contract is the workflow state + Pydantic schemas exchanged between nodes/agents. Routes delegate to the Chat Service, which runs the workflow.)*
 
 **Workflow state fields:** `question`, `generated_sql`, `query_result`, `chart_config`, `insights`, `followup_questions`, `error_message`.
 
@@ -105,16 +112,16 @@ Visualization, Insight, and Follow-Up nodes run **in parallel** after a successf
 ## 7. Coding Standards
 
 - **Naming:** snake_case modules; suffix by role — `*_agent.py`, `*_node.py`, `*_service.py`, `*_repository.py`.
-- **Typed data:** every inter-agent / inter-layer payload is a Pydantic model in `schemas/`.
-- **Prompts:** live in `prompts/`, one per agent; never inline prompt strings in agent code.
-- **Config:** centralized in `config/` — no scattered env reads or magic constants.
+- **Typed data:** every inter-agent / inter-layer payload (and API request/response) is a Pydantic model in `app/schemas/`.
+- **Prompts:** live in `app/prompts/`, one per agent; never inline prompt strings in agent code.
+- **Config:** centralized in `app/config/` — no scattered env reads or magic constants.
 - **Error handling:** propagate failures via the workflow `error_message`; surface the standard user-facing messages (see §9 / FRS §10) rather than raw exceptions.
 
 ---
 
 ## 8. Data Model Summary
 
-SQLite database, accessed **read-only**. Planned SQLAlchemy models: `customers`, `products`, `orders`, `order_items`. Business entities referenced by queries: Orders, Products, Customers, Categories, Regions. The database auto-initializes on first startup (create → schema → tables → generate sample data → seed) via `utils/`.
+SQLite database, accessed **read-only**. Planned SQLAlchemy models: `customers`, `products`, `orders`, `order_items`. Business entities referenced by queries: Orders, Products, Customers, Categories, Regions. The database auto-initializes on first startup (create → schema → tables → generate sample data → seed) via `app/utils/`.
 
 > Column-level schema is provided before implementation (FRS §5) — do **not** invent columns. Model against the real schema when supplied.
 
@@ -143,8 +150,9 @@ Framework: pytest, run with `uv run pytest`. Tests live under `tests/`:
 - ❌ Fabricate insights, figures, or claims not supported by the returned data (FR-9; core product rule).
 - ❌ Generate or execute non-`SELECT` SQL, or bypass the SQL Validation node.
 - ❌ Let any component other than the SQL Agent touch the database.
-- ❌ Hardcode prompt text inside agents — use `prompts/`.
-- ❌ Put business logic in repositories, or import LangGraph into services.
+- ❌ Hardcode prompt text inside agents — use `app/prompts/`.
+- ❌ Put business logic in repositories, or import LangGraph into domain services (the Chat Service is the only service that runs the workflow).
+- ❌ Put business logic in FastAPI routes — delegate to the Chat Service.
 - ❌ Exchange unstructured text between agents — use Pydantic schemas.
 - ❌ Add forecasting / predictive modeling / autonomous actions (out of scope, FRS §14).
 - ❌ Use `requirements.txt` as the dependency source; commit `.env` or `*.db` (both gitignored).

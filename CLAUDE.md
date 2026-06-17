@@ -11,7 +11,7 @@ Claude Code operating rules for this repo. **Project facts live in `AGENTS.md`**
 
 ## 2. Commands Requiring `[y/n]` Permission
 
-`git commit` · `git push` · `uv add` / `uv remove` / `uv sync --upgrade` · `rm` and other destructive file ops · `uv run streamlit run app.py` (long-running) · any global/system install.
+`git commit` · `git push` · `uv add` / `uv remove` / `uv sync --upgrade` · `rm` and other destructive file ops · `uv run streamlit run website/app.py` / `uv run uvicorn app.main:app` (long-running) · any global/system install.
 Commit & push **only when the user asks** — never autonomously.
 
 ## 3. Context Management
@@ -43,7 +43,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
 2. `uv run ruff format --check .`
 3. `uv run pytest`
 
-All must pass — don't claim done or commit on red. No build step (Streamlit). ruff isn't a dependency yet: run `uv add --dev ruff` before relying on gates 1–2; until then `pytest` is the active gate.
+All must pass — don't claim done or commit on red. No build step (Streamlit). `ruff` and `pytest` are installed as dev dependencies.
 
 ## 8. Docstrings
 
@@ -51,10 +51,10 @@ Every module, public class, and public function/method gets a triple-quoted docs
 
 ## 9. Logging
 
-Always use the centralized logger from `config/log_config.py`:
+Always use the centralized logger from `app/config/log_config.py`:
 
 ```python
-from config.log_config import get_logger
+from app.config.log_config import get_logger
 logger = get_logger(__name__)
 ```
 
@@ -62,4 +62,4 @@ Never `print()` for diagnostics; never configure logging ad-hoc in modules. Log 
 
 ## 10. Class-Based / OOP
 
-Implement application code as **classes** — agents, services, repositories, and nodes are classes with one clear responsibility; inject dependencies via the constructor; one primary class per module. Functional code is fine only for: Pydantic models in `schemas/`, prompt constants in `prompts/`, thin entry points (`app.py` / `starter.py`), and small pure helpers in `utils/`.
+Implement application code as **classes** — agents, services, repositories, and nodes are classes with one clear responsibility; inject dependencies via the constructor; one primary class per module. Functional code is fine only for: Pydantic models in `app/schemas/`, prompt constants in `app/prompts/`, thin entry points (`app/main.py` / `website/app.py` / `starter.py`), and small pure helpers in `app/utils/`.
