@@ -29,9 +29,9 @@ Single **uv** project — **not** a monorepo, so there is no `/packages/shared`.
 | `app/orchestration/nodes/` | `sql_generation`, `sql_validation`, `query_execution`, `visualization`, `insight`, `followup`, `response` |
 | `app/services/` | Business logic: `chat` (API↔workflow bridge), `analytics`, `sql`, `visualization`, `insight`, `followup` |
 | `app/repositories/` | `query_repository` — SQL execution + SQLAlchemy sessions only |
-| `app/models/` | SQLAlchemy models: `customer`, `product`, `order`, `order_item` |
-| `app/schemas/` | Pydantic contracts: `requests`, `responses`, `sql_result`, `chart_config`, `workflow_state` |
-| `app/utils/` | `validators`, `sql_helpers`, `chart_helpers`, DB init + sample-data/seed generators |
+| `app/models/` | SQLAlchemy models: `base`, `customer`, `product`, `order`, `order_item` |
+| `app/schemas/` | Pydantic contracts: `entities`, `requests`, `responses`, `sql_result`, `chart_config`, `workflow_state` |
+| `app/utils/` | `validators`, `sql_helpers`, `chart_helpers`, `database_initializer` (creates tables + loads the CSV once) |
 | `website/app.py` | Streamlit UI (API client) — `uv run streamlit run website/app.py` |
 | `tests/` | `agents/`, `services/`, `repositories/`, `workflows/`, `integration/` (root; import from `app.*`) |
 | `docs/` | FRS, SDS, spec, `decisions/technical_architecture.md` |
@@ -121,9 +121,14 @@ Visualization, Insight, and Follow-Up nodes run **in parallel** after a successf
 
 ## 8. Data Model Summary
 
-SQLite database, accessed **read-only**. Planned SQLAlchemy models: `customers`, `products`, `orders`, `order_items`. Business entities referenced by queries: Orders, Products, Customers, Categories, Regions. The database auto-initializes on first startup (create → schema → tables → generate sample data → seed) via `app/utils/`.
+SQLite database, **read-only for user queries**. Source data is the Sample Superstore dataset (`data/database.csv`), normalized into four tables:
 
-> Column-level schema is provided before implementation (FRS §5) — do **not** invent columns. Model against the real schema when supplied.
+- `customers` — `customer_id` (PK), `customer_name`, `segment`
+- `products` — `product_id` (PK), `category`, `sub_category`, `product_name`
+- `orders` — `order_id` (PK), `order_date`, `ship_date`, `ship_mode`, `customer_id` (→ customers), `country`, `city`, `state`, `postal_code`, `region`
+- `order_items` — `row_id` (PK), `order_id` (→ orders), `product_id` (→ products), `sales`, `quantity`, `discount`, `profit`
+
+On startup the bootstrap (`starter.py` → `create_app`) creates the tables and loads the CSV **once** (only if empty) via `app/utils/database_initializer.py`.
 
 ---
 

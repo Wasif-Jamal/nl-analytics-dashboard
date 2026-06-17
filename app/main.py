@@ -1,12 +1,12 @@
 """FastAPI ASGI entry point for the backend.
 
-Assembles the FastAPI application and mounts the routers defined under
-`app.routes`. The Streamlit UI (``website/app.py``) is a client of this API.
-Served via Uvicorn, e.g. ``uv run uvicorn app.main:app``.
+Exposes the application built by the bootstrap factory
+(:func:`starter.create_app`) as ``app`` for Uvicorn
+(``uv run uvicorn app.main:app``). The factory initializes the database and
+loads the source CSV once on startup. The Streamlit UI (``website/app.py``) is
+a client of this API.
 """
 
-from fastapi import FastAPI
+from starter import create_app
 
-app = FastAPI(title="Natural Language Analytics Dashboard API")
-
-# Routers from app.routes (chat_routes, health) are included here as they land.
+app = create_app()
