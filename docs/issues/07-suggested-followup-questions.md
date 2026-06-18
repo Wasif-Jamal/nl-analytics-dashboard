@@ -2,6 +2,8 @@
 
 Based on the current result, the system must suggest a few relevant follow-up questions the user can run with one click, supporting exploratory analysis. Source: FRS §6.5; FR-10.
 
+> Implemented via the `suggest_followups` tool under the tool-calling agent architecture (issue #11): an LLM call over the original question and the returned data.
+
 ## Acceptance Criteria
 
 1. After a result is shown, the system proposes a small set of relevant follow-up questions.

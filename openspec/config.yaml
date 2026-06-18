@@ -15,14 +15,20 @@ context: |
 
   Layout: backend lives under app/ (entry app/main.py); UI under website/ (entry website/app.py).
 
-  Architecture constraints (docs/SDS.md §2,6-9; docs/FRS.md §9,13,14):
-  - Layered + LangGraph multi-agent: User -> Streamlit (website/) -> FastAPI (app/routes/)
-    -> Chat Service -> LangGraph -> Agents -> Services -> Repositories -> SQLite.
+  Architecture constraints (docs/SDS.md §2,6-9; docs/decisions/technical_architecture.md §16; docs/FRS.md §9,13,14):
+  - Layered + LangGraph create_agent tool-calling agent: User -> Streamlit (website/) ->
+    FastAPI (app/routes/) -> Chat Service -> create_agent supervisor -> agent tools
+    (query_database, generate_visualization, generate_insights, suggest_followups) -> Repository -> SQLite.
+  - create_agent builds the agent node, ToolNode, and routing internally — no hand-written nodes
+    or conditional edges. AnalyticsGraph (app/orchestration/graph.py) assembles the tools.
+  - Each agent exposes a capability tool via get_tools(); tools read prior results from state via
+    InjectedState and return a typed Command. WorkflowState subclasses MessagesState.
   - FastAPI routes hold no business logic; they delegate to the Chat Service
-    (app/services/chat_service.py), the only component that runs the workflow.
-  - Domain services stay independent of LangGraph; repositories hold no business logic.
-  - The SQL Agent is the ONLY component allowed to touch the database.
-  - Agents communicate via Pydantic schemas only — never unstructured text.
+    (app/services/chat_service.py), the only component that runs the workflow (the compiled graph).
+  - The SQL Agent is the ONLY component allowed to touch the database (via its query_database tool);
+    it keeps its own LLM and self-corrects invalid SQL through a bounded retry loop.
+  - Repositories hold no business logic. Agent outputs are typed Pydantic schemas written to state
+    via Command (SQLGenerationOutput, ChartConfig, InsightOutput, FollowupOutput) — never unstructured data.
   - Read-only SQL only: SELECT allowed; INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE blocked.
   - Out of scope: authentication/authorization, forecasting/predictive modeling, autonomous
     actions. Insights must be grounded in returned data — never fabricate figures or claims.

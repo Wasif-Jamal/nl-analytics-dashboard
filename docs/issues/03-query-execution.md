@@ -2,6 +2,8 @@
 
 Validated queries must execute against the SQL database and return their results in a structured form usable by downstream presentation, insight, and follow-up steps. Source: FRS §6.2; FR-4.
 
+> Implemented via the `query_database` tool under the tool-calling agent architecture (issue #11), which validates read-only and executes in one step.
+
 ## Acceptance Criteria
 
 1. Only queries that passed validation (issue #2) are executed.

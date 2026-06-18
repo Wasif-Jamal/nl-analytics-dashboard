@@ -14,5 +14,6 @@ High-level (epic-level) issues derived from `docs/FRS.md`. These markdown files 
 | 8 | [Query History (session)](08-query-history.md) | §6.7, §7; FR-11 | `area:ui` |
 | 9 | [Error Handling & Messaging](09-error-handling-messaging.md) | §10, §12 | `area:ui` |
 | 10 | [API Layer (FastAPI routes & Chat Service)](10-api-layer-fastapi.md) | SDS §9.3; tech-arch §15 | `area:api` |
+| 11 | [Tool-Calling Agent Architecture](11-tool-calling-agent-architecture.md) (GitHub #13) | SDS §6–8; tech-arch §5–6, §16 | `area:orchestration` |
 
 All issues also carry the `enhancement` label.

@@ -8,7 +8,7 @@ Expose the analytics workflow over an HTTP API built with FastAPI, so the Stream
 2. `app/routes/` exposes a submit-question endpoint (accepts an NL question, returns the analytics response) and a health endpoint.
 3. Request and response payloads are validated by the Pydantic schemas in `app/schemas/` (`requests`, `responses`).
 4. Routes contain no business logic — they delegate to the Chat Service (`app/services/chat_service.py`).
-5. The Chat Service invokes the LangGraph workflow and returns the aggregated response; the domain services remain independent of LangGraph.
+5. The Chat Service invokes the LangGraph workflow (the compiled `create_agent` graph — issue #11) and returns the aggregated response; the domain services remain independent of LangGraph.
 6. The Streamlit UI (`website/app.py`) consumes this API rather than invoking the workflow in-process.
 
 ## Error Scenarios
