@@ -104,13 +104,12 @@ nl-analytics-dashboard/
 ├── pyproject.toml
 ├── uv.lock
 ├── .python-version
-├── starter.py                    # app bootstrap
-│
 ├── .env
 ├── .env.example
 │
 ├── app/                          # complete backend
 │   ├── main.py                   # FastAPI ASGI entry (uv run uvicorn app.main:app)
+│   ├── starter.py                # app bootstrap / factory
 │   │
 │   ├── routes/
 │   │   ├── chat_routes.py
@@ -441,7 +440,7 @@ Responsibilities:
 
 # 12. Database Initialization
 
-The application shall initialize SQLite on startup via the bootstrap (`starter.py` → `create_app`).
+The application shall initialize SQLite on startup via the bootstrap (`app/starter.py` → `create_app`).
 
 Initialization process:
 

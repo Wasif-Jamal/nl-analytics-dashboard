@@ -93,13 +93,12 @@ nl-analytics-dashboard/
 ├── pyproject.toml
 ├── uv.lock
 ├── .python-version
-├── starter.py                    # app bootstrap
-│
 ├── .env
 ├── .env.example
 │
 ├── app/                          # complete backend
 │   ├── main.py                   # FastAPI ASGI entry (uv run uvicorn app.main:app)
+│   ├── starter.py                # app bootstrap / factory
 │   │
 │   ├── routes/
 │   │   ├── chat_routes.py
@@ -295,7 +294,7 @@ Configuration is centralized under `app/config/`.
 
 ## 12. Database Initialization
 
-On startup the bootstrap (`starter.py` → `create_app`) initializes SQLite:
+On startup the bootstrap (`app/starter.py` → `create_app`) initializes SQLite:
 
 1. Create the database (`data/superstore.db`)
 2. Create tables from the SQLAlchemy models

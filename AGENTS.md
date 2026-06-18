@@ -18,7 +18,7 @@ Single **uv** project — **not** a monorepo, so there is no `/packages/shared`.
 
 | Path | Contents |
 |---|---|
-| `starter.py` | App bootstrap (root) *(not yet created)* |
+| `app/starter.py` | App bootstrap (inside `app/`) |
 | `app/` | **Complete backend** (single package) |
 | `app/main.py` | FastAPI ASGI entry — `uv run uvicorn app.main:app` |
 | `app/routes/` | FastAPI routers: `chat_routes`, `health` — HTTP endpoints; no business logic |
@@ -128,7 +128,7 @@ SQLite database, **read-only for user queries**. Source data is the Sample Super
 - `orders` — `order_id` (PK), `order_date`, `ship_date`, `ship_mode`, `customer_id` (→ customers), `country`, `city`, `state`, `postal_code`, `region`
 - `order_items` — `row_id` (PK), `order_id` (→ orders), `product_id` (→ products), `sales`, `quantity`, `discount`, `profit`
 
-On startup the bootstrap (`starter.py` → `create_app`) creates the tables and loads the CSV **once** (only if empty) via `app/utils/database_initializer.py`.
+On startup the bootstrap (`app/starter.py` → `create_app`) creates the tables and loads the CSV **once** (only if empty) via `app/utils/database_initializer.py`.
 
 ---
 

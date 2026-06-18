@@ -62,4 +62,4 @@ Never `print()` for diagnostics; never configure logging ad-hoc in modules. Log 
 
 ## 10. Class-Based / OOP
 
-Implement application code as **classes** — agents, services, repositories, and nodes are classes with one clear responsibility; inject dependencies via the constructor; one primary class per module. Functional code is fine only for: Pydantic models in `app/schemas/`, prompt constants in `app/prompts/`, thin entry points (`app/main.py` / `website/app.py` / `starter.py`), and small pure helpers in `app/utils/`.
+Implement application code as **classes** — agents, services, repositories, and nodes are classes with one clear responsibility; inject dependencies via the constructor; one primary class per module. Functional code is fine only for: Pydantic models in `app/schemas/`, prompt constants in `app/prompts/`, thin entry points (`app/main.py` / `website/app.py` / `app/starter.py`), and small pure helpers in `app/utils/`.
