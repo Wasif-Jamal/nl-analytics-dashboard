@@ -341,7 +341,7 @@ Mapping each `FRS.md` requirement to the design element that satisfies it.
 | FR-8 — single-value plain-language answer | Visualization Agent / Response Node written-answer path |
 | FR-9 — actionable insights grounded in data | Insight Agent (§6.3); Insight Node (§7.2) |
 | FR-10 — suggested follow-up questions | Follow-Up Agent (§6.4); Follow-Up Node (§7.2) |
-| FR-11 — session query history | Streamlit session state (`website/`, Query History Panel); `app/repositories/query_repository.py` |
+| FR-11 — session query history | Streamlit UI generates a UUID4 `session_uuid` on first load (`st.session_state`) and includes it in every API request; `app/services/chat_service.py` holds an in-memory `dict[session_uuid → list[question]]` and appends each successfully answered question; history is never written to the database; response payload includes the session history list for the UI to render |
 | FR-12 — export results as CSV | Streamlit download action (`website/`) over query result DataFrame |
 | API transport (all FRs) | FastAPI routes (`app/routes/`) + Chat Service (`app/services/chat_service.py`) (§9.3) |
 | Validation (FRS §9) — block non-read-only SQL | SQL Validation Node (§7.2); allows `SELECT` only |
