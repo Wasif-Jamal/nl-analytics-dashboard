@@ -1,10 +1,10 @@
 ## 1. Phase 1 — Schema Extension
 
-- [ ] 1.1 `app/schemas/responses.py` — extend `AnalyticsResponse`
-  - [ ] 1.1.1 Add `query_result: Optional[list[dict]] = None` — serialized rows from `QueryResult.dataframe.to_dict(orient="records")`
-  - [ ] 1.1.2 Add `columns: Optional[list[str]] = None` — column names in result order
-  - [ ] 1.1.3 Add `row_count: Optional[int] = None` — number of rows returned
-  - [ ] 1.1.4 Update class docstring to document the three new attributes
+- [x] 1.1 `app/schemas/responses.py` — extend `AnalyticsResponse`
+  - [x] 1.1.1 Add `query_result: Optional[list[dict]] = None` — serialized rows from `QueryResult.dataframe.to_dict(orient="records")`
+  - [x] 1.1.2 Add `columns: Optional[list[str]] = None` — column names in result order
+  - [x] 1.1.3 Add `row_count: Optional[int] = None` — number of rows returned
+  - [x] 1.1.4 Update class docstring to document the three new attributes
 
 **Checkpoint:**
 ```bash
