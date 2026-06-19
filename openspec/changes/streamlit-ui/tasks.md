@@ -21,7 +21,7 @@ Tasks 2.1 and 2.2 are independent once Phase 1 is done — **[PARALLEL]**.
 
 ### 2.1 **[PARALLEL]** `app/services/chat_service.py` — serialize `QueryResult` *(depends on 1.1)*
 
-- [ ] 2.1.1 In the success branch of `ask()`, after reading `error_message` from state, extract and serialize `query_result`:
+- [x] 2.1.1 In the success branch of `ask()`, after reading `error_message` from state, extract and serialize `query_result`:
   ```python
   query_result_obj = result.get("query_result")
   serialized_rows: list[dict] | None = None
@@ -32,35 +32,35 @@ Tasks 2.1 and 2.2 are independent once Phase 1 is done — **[PARALLEL]**.
       columns = query_result_obj.columns
       row_count = query_result_obj.row_count
   ```
-- [ ] 2.1.2 Pass `query_result=serialized_rows, columns=columns, row_count=row_count` to the `AnalyticsResponse(...)` constructor
-- [ ] 2.1.3 Update the `ask()` docstring to mention the serialization step
-- [ ] 2.1.4 Verify the `except` branch is unchanged — `query_result`, `columns`, `row_count` are absent from that `AnalyticsResponse(...)` call so they correctly default to `None`
+- [x] 2.1.2 Pass `query_result=serialized_rows, columns=columns, row_count=row_count` to the `AnalyticsResponse(...)` constructor
+- [x] 2.1.3 Update the `ask()` docstring to mention the serialization step
+- [x] 2.1.4 Verify the `except` branch is unchanged — `query_result`, `columns`, `row_count` are absent from that `AnalyticsResponse(...)` call so they correctly default to `None`
 
 ### 2.2 **[PARALLEL]** `website/app.py` — full Streamlit UI *(depends on 1.1)*
 
-- [ ] 2.2.1 Add imports: `import uuid`, `import httpx`, `import streamlit as st`
-- [ ] 2.2.2 Define module-level constant: `API_BASE_URL = "http://localhost:8000"`
-- [ ] 2.2.3 Keep existing `st.set_page_config(page_title="Natural Language Analytics Dashboard")` and `st.title(...)` calls at the top
-- [ ] 2.2.4 Session init — generate UUID once:
+- [x] 2.2.1 Add imports: `import uuid`, `import httpx`, `import streamlit as st`
+- [x] 2.2.2 Define module-level constant: `API_BASE_URL = "http://localhost:8000"`
+- [x] 2.2.3 Keep existing `st.set_page_config(page_title="Natural Language Analytics Dashboard")` and `st.title(...)` calls at the top
+- [x] 2.2.4 Session init — generate UUID once:
   ```python
   if "session_uuid" not in st.session_state:
       st.session_state.session_uuid = str(uuid.uuid4())
   ```
-- [ ] 2.2.5 Add question text input: `question = st.text_input("Ask a question about your data")`
-- [ ] 2.2.6 Add submit button: `submitted = st.button("Submit")`
-- [ ] 2.2.7 Empty/whitespace guard — when `submitted` and `not question.strip()`: show `st.info("Please enter a question")`; no HTTP call is made
-- [ ] 2.2.8 Happy-path submission — when `submitted` and `question.strip()`:
+- [x] 2.2.5 Add question text input: `question = st.text_input("Ask a question about your data")`
+- [x] 2.2.6 Add submit button: `submitted = st.button("Submit")`
+- [x] 2.2.7 Empty/whitespace guard — when `submitted` and `not question.strip()`: show `st.info("Please enter a question")`; no HTTP call is made
+- [x] 2.2.8 Happy-path submission — when `submitted` and `question.strip()`:
   - Wrap the entire HTTP call in `with st.spinner("Analyzing...")`
   - `httpx.post(f"{API_BASE_URL}/api/chat", json={"session_uuid": st.session_state.session_uuid, "question": question}, timeout=60.0)`
   - Read `data = response.json()`
-- [ ] 2.2.9 Response rendering — error branch: if `data.get("error_message")` → `st.warning(error_message)`
-- [ ] 2.2.10 Response rendering — success branch:
+- [x] 2.2.9 Response rendering — error branch: if `data.get("error_message")` → `st.warning(error_message)`
+- [x] 2.2.10 Response rendering — success branch:
   - If `data.get("generated_sql")` → `st.expander("Generated SQL")` containing `st.code(generated_sql, language="sql")`
   - If `data.get("query_result")` → `st.dataframe(query_result)`
-- [ ] 2.2.11 Network error handling:
+- [x] 2.2.11 Network error handling:
   - `except httpx.ConnectError` → `st.warning("Could not connect to the server. Please try again.")`
   - `except httpx.RequestError` → `st.warning("Could not connect to the server. Please try again.")`
-- [ ] 2.2.12 Add module docstring (states it is a pure API client, references `POST /api/chat`, run command)
+- [x] 2.2.12 Add module docstring (states it is a pure API client, references `POST /api/chat`, run command)
 
 **Checkpoint:**
 ```bash
