@@ -94,3 +94,16 @@ uv run pytest
 
 - [x] 5.1 `openspec validate sql-pipeline` passes
 - [x] 5.2 All quality gates green; deviations reconciled into `plan.md`
+
+---
+
+## 6. Phase 6 — Review remediation
+
+Gaps found in review of the first implementation pass:
+
+- [x] 6.1 **Wiring bug**: `settings.sql_retry_limit` was stored but never reached the agent. `SqlAgent` and `AnalyticsGraph` now default `retry_limit` from `settings.sql_retry_limit` (env `SQL_RETRY_LIMIT`) when not explicitly passed *(spec: env-configuration)*
+- [x] 6.2 `test_retry_limit_sourced_from_settings` — `SQL_RETRY_LIMIT=5` → inner agent `recursion_limit == 5*2+1` *(spec: env-configuration "is set")*
+- [x] 6.3 `test_retry_limit_defaults_to_settings_value` — Settings default is 3 and the agent sources from settings *(spec: env-configuration "is absent")*
+- [x] 6.4 `test_validation_failure_then_recovers` — non-SELECT first attempt blocked, then valid SELECT succeeds (end-to-end) *(spec: sql-self-correction-retry "validation fails then succeeds")*
+- [x] 6.5 `test_all_attempts_fail_surfaces_validation_error` — repeated non-SELECT attempts surface the validation error; DB asserted unchanged *(spec: sql-self-correction-retry "all retries exhausted")*
+- [x] 6.6 Added `sql_explanation` assertions to validation/database failure unit tests (task 4.4.6 completeness)

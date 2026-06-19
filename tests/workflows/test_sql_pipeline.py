@@ -100,6 +100,38 @@ def test_execution_retry_recovers(initialized_engine: Engine):
     assert update["query_result"].row_count == 2
 
 
+def test_validation_failure_then_recovers(initialized_engine: Engine):
+    """A first non-SELECT attempt is blocked by validation, then a valid SELECT wins."""
+    tool = _pipeline(
+        initialized_engine,
+        ["DELETE FROM orders", _REVENUE_SQL],
+        _identifiable(_REVENUE_SQL),
+    )
+    update = _run(tool)
+    assert update["error_message"] is None
+    assert update["query_result"].row_count == 2
+
+
+def test_all_attempts_fail_surfaces_validation_error(initialized_engine: Engine):
+    """Repeated non-SELECT attempts exhaust without success → validation error, DB intact."""
+    repo = QueryRepository(db_engine=initialized_engine)
+    before = repo.execute_select("SELECT COUNT(*) AS n FROM orders").dataframe.iloc[0][
+        "n"
+    ]
+    tool = _pipeline(
+        initialized_engine,
+        ["DELETE FROM orders", "DROP TABLE orders", "UPDATE orders SET region = 'x'"],
+        _identifiable("DELETE FROM orders"),
+    )
+    update = _run(tool)
+    assert update["error_message"] == "Generated query could not be validated."
+    assert update["query_result"] is None
+    after = repo.execute_select("SELECT COUNT(*) AS n FROM orders").dataframe.iloc[0][
+        "n"
+    ]
+    assert after == before
+
+
 def test_read_only_guard_blocks_write(initialized_engine: Engine):
     """A DELETE is blocked by validation and the database is left unmodified."""
     repo = QueryRepository(db_engine=initialized_engine)

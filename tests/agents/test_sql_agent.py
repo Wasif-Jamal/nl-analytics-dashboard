@@ -82,6 +82,7 @@ def test_validation_failure_maps_to_validation_message():
     assert update["error_message"] == "Generated query could not be validated."
     assert update["query_result"] is None
     assert update["generated_sql"] == "SELECT 1"
+    assert update["sql_explanation"] == "x"
 
 
 def test_database_failure_maps_to_database_message():
@@ -96,6 +97,7 @@ def test_database_failure_maps_to_database_message():
     assert update["error_message"] == "Unable to retrieve data at this time."
     assert update["query_result"] is None
     assert update["generated_sql"] == "SELECT bad"
+    assert update["sql_explanation"] == "x"
 
 
 def test_empty_result_maps_to_no_data_message():
@@ -107,3 +109,34 @@ def test_empty_result_maps_to_no_data_message():
     update = _invoke(tool)
     assert update["error_message"] == "No data found for the requested query."
     assert update["query_result"] is None
+
+
+def test_retry_limit_sourced_from_settings(monkeypatch):
+    """SQL_RETRY_LIMIT (via settings) bounds the inner agent's recursion limit."""
+    from app.config import env_config
+
+    monkeypatch.setattr(env_config.settings, "sql_retry_limit", 5)
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    agent = SqlAgent(llm, MagicMock(spec=QueryService))  # no explicit retry_limit
+    assert agent._retry_limit == 5
+
+    agent._agent = MagicMock()
+    output = SQLGenerationOutput(sql="SELECT 1", explanation="x", is_identifiable=True)
+    agent._agent.invoke.return_value = {
+        "structured_response": output,
+        "query_result": _result(2),
+        "error_type": None,
+    }
+    _invoke(agent.get_tools()[0])
+    config = agent._agent.invoke.call_args.kwargs["config"]
+    assert config["recursion_limit"] == 5 * 2 + 1
+
+
+def test_retry_limit_defaults_to_settings_value():
+    """With SQL_RETRY_LIMIT absent, the limit defaults to settings (3) and is wired."""
+    from app.config.env_config import Settings, settings
+
+    assert Settings.model_fields["sql_retry_limit"].default == 3
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    agent = SqlAgent(llm, MagicMock(spec=QueryService))
+    assert agent._retry_limit == settings.sql_retry_limit

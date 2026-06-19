@@ -13,6 +13,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.sql_agent import SqlAgent
+from app.config.env_config import settings
 from app.config.log_config import get_logger
 from app.orchestration.state import WorkflowState
 from app.prompts.orchestrator_prompt import ORCHESTRATOR_PROMPT
@@ -28,18 +29,21 @@ class AnalyticsGraph:
         self,
         llm: ChatGoogleGenerativeAI,
         query_service: QueryService,
-        retry_limit: int = 3,
+        retry_limit: int | None = None,
     ) -> None:
         """Store the dependencies used to assemble the supervisor.
 
         Args:
             llm: The chat model driving the supervisor (and the inner SQL agent).
             query_service: Execution service injected into the SQL agent.
-            retry_limit: Self-correction attempt bound for the SQL agent.
+            retry_limit: Self-correction attempt bound for the SQL agent. Defaults
+                to ``settings.sql_retry_limit`` (the ``SQL_RETRY_LIMIT`` env var).
         """
         self._llm = llm
         self._query_service = query_service
-        self._retry_limit = retry_limit
+        self._retry_limit = (
+            retry_limit if retry_limit is not None else settings.sql_retry_limit
+        )
 
     def build(self) -> CompiledStateGraph:
         """Assemble the tools and return the compiled supervisor graph.

@@ -20,6 +20,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 
+from app.config.env_config import settings
 from app.config.log_config import get_logger
 from app.orchestration.state import WorkflowState
 from app.prompts.sql_prompt import SQL_SYSTEM_PROMPT
@@ -60,7 +61,7 @@ class SqlAgent:
         self,
         llm: ChatGoogleGenerativeAI,
         query_service: QueryService,
-        retry_limit: int = 3,
+        retry_limit: int | None = None,
     ) -> None:
         """Build the inner autonomous agent and its execution tool.
 
@@ -68,10 +69,13 @@ class SqlAgent:
             llm: The chat model the inner agent uses to generate/correct SQL.
             query_service: Executes validated SQL (the only DB pathway).
             retry_limit: Max self-correction attempts; bounds the inner agent's
-                tool-calling loop via ``recursion_limit``.
+                tool-calling loop via ``recursion_limit``. Defaults to
+                ``settings.sql_retry_limit`` (the ``SQL_RETRY_LIMIT`` env var).
         """
         self._query_service = query_service
-        self._retry_limit = retry_limit
+        self._retry_limit = (
+            retry_limit if retry_limit is not None else settings.sql_retry_limit
+        )
         self._agent = create_agent(
             model=llm,
             tools=[self._build_validate_and_execute()],
