@@ -92,5 +92,5 @@ uv run pytest
 
 ## 5. Phase 5 — Finalize
 
-- [ ] 5.1 `openspec validate sql-pipeline` passes
-- [ ] 5.2 All quality gates green; reconcile any deviations back into `plan.md`
+- [x] 5.1 `openspec validate sql-pipeline` passes
+- [x] 5.2 All quality gates green; deviations reconciled into `plan.md`

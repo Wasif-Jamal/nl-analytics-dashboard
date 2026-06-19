@@ -422,11 +422,15 @@ Uses `initialized_engine` from `conftest.py`. Mocks the inner agent's `validate_
 
 ---
 
-## Risks / Verify at Implementation Time
+## Risks / Verify at Implementation Time — RESOLVED
 
-- **`state_schema` base class for the supervisor.** Spec requires `WorkflowState` to subclass `MessagesState`; the supervisor uses no `response_format`, so `structured_response` isn't needed. If `create_agent` rejects the schema for missing `AgentState` fields (e.g. `jump_to`), fall back to subclassing `AgentState` — still a superset of `MessagesState`, so the spec intent ("messages comes for free") holds. Verify with one `build()` smoke test.
-- **`AgentState` import path** for `SqlAgentState` — confirm the public re-export (`from langchain.agents import AgentState`); otherwise import from the concrete `langchain.agents.middleware.types` module.
-- **`run_query` raising** — `QueryRepository.execute_select` lets SQLAlchemy errors propagate; `validate_and_execute` catches them to set `error_type="database"`. Keep the repository free of business logic (no exception-swallowing).
+- **`state_schema` base class for the supervisor.** ✅ Resolved: `create_agent` accepts `WorkflowState` (a `MessagesState` subclass) directly — smoke-verified the graph compiles with topology `__start__→model→tools→__end__`. No `AgentState` fallback needed for the supervisor.
+- **`AgentState` import path** for `SqlAgentState`. ✅ Resolved: `from langchain.agents import AgentState` works (public re-export).
+- **`run_query` raising.** ✅ Implemented as planned: `QueryRepository.execute_select` lets SQLAlchemy errors propagate; the inner `validate_and_execute` catches them to set `error_type="database"`. Repository stays free of business logic.
+
+## Deviations from plan during implementation
+
+- Repository-test update (task 4.2) and the incidental `tests/utils/test_database_initializer.py` caller fix were pulled forward into Phase 2, because changing `execute_select`'s return type to `QueryResult` broke those callers immediately — fixing them in the same phase kept the suite green.
 
 ---
 
