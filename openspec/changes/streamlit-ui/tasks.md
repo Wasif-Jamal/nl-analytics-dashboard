@@ -77,9 +77,9 @@ Tasks 3.1 and 3.2 are independent — **[PARALLEL]**.
 
 ### 3.1 **[PARALLEL]** `tests/services/test_chat_service.py` — add serialization tests *(spec: chat-service-workflow-bridge — query_result)*
 
-- [ ] 3.1.1 Add imports at top: `import pandas as pd` and `from app.schemas.sql_result import QueryResult`
+- [x] 3.1.1 Add imports at top: `import pandas as pd` and `from app.schemas.sql_result import QueryResult`
 
-- [ ] 3.1.2 *(spec: response-schema — successful workflow: query_result populated)*
+- [x] 3.1.2 *(spec: response-schema — successful workflow: query_result populated)*
   `test_query_result_serialized_in_response`:
   - Build `QueryResult(dataframe=pd.DataFrame([{"month": "Jan", "sales": 1000}]), columns=["month", "sales"], row_count=1)`
   - `mock_graph.invoke.return_value = _make_state(query_result=<above>)`
@@ -87,7 +87,7 @@ Tasks 3.1 and 3.2 are independent — **[PARALLEL]**.
   - Assert `resp.columns == ["month", "sales"]`
   - Assert `resp.row_count == 1`
 
-- [ ] 3.1.3 *(spec: response-schema — workflow error: query_result absent)*
+- [x] 3.1.3 *(spec: response-schema — workflow error: query_result absent)*
   `test_query_result_none_when_absent`:
   - `mock_graph.invoke.return_value = _make_state(query_result=None)`
   - Assert `resp.query_result is None`
@@ -96,66 +96,43 @@ Tasks 3.1 and 3.2 are independent — **[PARALLEL]**.
 
 ### 3.2 **[PARALLEL]** `tests/ui/` — Streamlit UI tests *(spec: streamlit-ui — all scenarios)*
 
-- [ ] 3.2.0 Create `tests/ui/__init__.py` — empty package marker
+- [x] 3.2.0 Create `tests/ui/__init__.py` — empty package marker
 
-- [ ] 3.2.1 Create `tests/ui/test_app.py` with:
+- [x] 3.2.1 Create `tests/ui/test_app.py` with:
   - `from streamlit.testing.v1 import AppTest`
   - `from unittest.mock import MagicMock, patch`
   - `APP_PATH = "website/app.py"` module-level constant
   - Helpers: `_mock_response(data: dict) -> MagicMock` and `_success_data(question="Show monthly sales") -> dict`
 
-- [ ] 3.2.2 *(spec: session-initialisation — first page load)*
-  `test_session_uuid_generated_on_first_load`:
-  - `at = AppTest.from_file(APP_PATH); at.run()`
-  - Assert `"session_uuid" in at.session_state`
-  - Assert UUID string is non-empty
+- [x] 3.2.2 *(spec: session-initialisation — first page load)*
+  `test_session_uuid_generated_on_first_load`
 
-- [ ] 3.2.3 *(spec: session-initialisation — subsequent interactions)*
-  `test_session_uuid_stable_across_reruns`:
-  - Run app twice; capture `session_uuid` after each run
-  - Assert both values are equal (UUID not regenerated)
+- [x] 3.2.3 *(spec: session-initialisation — subsequent interactions)*
+  `test_session_uuid_stable_across_reruns`
 
-- [ ] 3.2.4 *(spec: question-submission — empty question submitted)*
-  `test_empty_question_shows_info_prompt`:
-  - Initial run; click submit with no input; run again
-  - Assert `len(at.info) > 0` and "Please enter a question" in the info text
-  - Assert no `st.warning` elements
+- [x] 3.2.4 *(spec: question-submission — empty question submitted)*
+  `test_empty_question_shows_info_prompt`
 
-- [ ] 3.2.5 *(spec: question-submission — whitespace-only question)*
-  `test_whitespace_question_shows_info_prompt`:
-  - Set input to `"   "`; click submit; run
-  - Assert `len(at.info) > 0` and "Please enter a question" in the info text
+- [x] 3.2.5 *(spec: question-submission — whitespace-only question)*
+  `test_whitespace_question_shows_info_prompt`
 
-- [ ] 3.2.6 *(spec: sql-display — SQL present in response)*
-  `test_successful_response_shows_sql_expander`:
-  - Set input to a question; with `patch("httpx.post", return_value=_mock_response(_success_data()))`: click submit; run
-  - Assert at least one `st.expander` is rendered with label "Generated SQL"
+- [x] 3.2.6 *(spec: sql-display — SQL present in response)*
+  `test_successful_response_shows_sql_expander`
 
-- [ ] 3.2.7 *(spec: results-display — rows present in response)*
-  `test_successful_response_shows_dataframe`:
-  - Same setup as 3.2.6
-  - Assert at least one `st.dataframe` is rendered
+- [x] 3.2.7 *(spec: results-display — rows present in response)*
+  `test_successful_response_shows_dataframe`
 
-- [ ] 3.2.8 *(spec: sql-display — SQL absent in response)*
-  `test_no_sql_expander_when_generated_sql_none`:
-  - Response data has `generated_sql=None`
-  - Assert no `st.expander` elements are rendered
+- [x] 3.2.8 *(spec: sql-display — SQL absent in response)*
+  `test_no_sql_expander_when_generated_sql_none`
 
-- [ ] 3.2.9 *(spec: error-display — backend returns error_message)*
-  `test_backend_error_message_shows_warning`:
-  - Response data has `error_message="Unable to identify requested entities."`, all other fields `None`
-  - Assert `len(at.warning) > 0` with the exact FRS §10 string
-  - Assert no `st.expander` and no `st.dataframe`
+- [x] 3.2.9 *(spec: error-display — backend returns error_message)*
+  `test_backend_error_message_shows_warning`
 
-- [ ] 3.2.10 *(spec: error-display — network / connection failure)*
-  `test_connection_error_shows_warning`:
-  - `patch("httpx.post", side_effect=httpx.ConnectError("refused"))`
-  - Assert `len(at.warning) > 0` and "Could not connect to the server" in warning text
+- [x] 3.2.10 *(spec: error-display — network / connection failure)*
+  `test_connection_error_shows_warning`
 
-- [ ] 3.2.11 *(spec: error-display — usable after failure)*
-  `test_usable_after_network_error`:
-  - First submission raises `ConnectError`; warning shown
-  - Without resetting, set a new question; assert `len(at.text_input) > 0` and `len(at.button) > 0` (inputs still present)
+- [x] 3.2.11 *(spec: error-display — usable after failure)*
+  `test_usable_after_network_error`
 
 **Checkpoint (final gate):**
 ```bash
@@ -168,5 +145,5 @@ uv run pytest
 
 ## 4. Phase 4 — Finalize
 
-- [ ] 4.1 `openspec validate streamlit-ui` passes
-- [ ] 4.2 All quality gates green; any deviations from the plan reconciled into `plan.md`
+- [x] 4.1 `openspec validate streamlit-ui` passes
+- [x] 4.2 All quality gates green; any deviations from the plan reconciled into `plan.md`
