@@ -16,6 +16,7 @@ class Settings(BaseSettings):
         google_api_key: API key for the Google GenAI (Gemini) provider.
         llm_model: Gemini model identifier (default ``gemini-2.0-flash``).
         llm_temperature: Sampling temperature for the LLM (default 0.0 for determinism).
+        sql_retry_limit: Max self-correction attempts for the SQL agent (default 3).
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -25,6 +26,7 @@ class Settings(BaseSettings):
     google_api_key: str | None = None
     llm_model: str = "gemini-2.0-flash"
     llm_temperature: float = 0.0
+    sql_retry_limit: int = 3
 
 
 settings = Settings()
