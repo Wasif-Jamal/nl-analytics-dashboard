@@ -221,6 +221,8 @@ The state is a `MessagesState` subclass (`WorkflowState`), so the message histor
 
 Tools update these fields by returning a `Command`.
 
+`WorkflowState` is an **in-process execution state** and is not required to be JSON-serializable. `query_result` is stored as a `pd.DataFrame` — keeping it as a DataFrame avoids a serialize/deserialize round-trip and lets the downstream visualization, insight, and follow-up tools work directly against the native Pandas API for efficient analytics processing.
+
 ### 7.2 Agent Loop & Tools
 
 The supervisor runs the ReAct loop: **model → (tool calls?) → `ToolNode` → model → … → end**.
