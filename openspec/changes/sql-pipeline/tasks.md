@@ -54,32 +54,32 @@ uv run pytest
 
 ## 4. Phase 4 — Tests (one test per spec scenario)
 
-- [ ] 4.1 `tests/utils/test_validators.py` *(spec: read-only-validation)*
-  - [ ] 4.1.1 plain `SELECT` → `True`
-  - [ ] 4.1.2 CTE (`WITH cte AS (SELECT ...) SELECT ...`) → `True`
-  - [ ] 4.1.3 each blocked keyword `INSERT`/`UPDATE`/`DELETE`/`DROP`/`ALTER`/`TRUNCATE` → `False`
-  - [ ] 4.1.4 lowercase variant (`insert into ...`) → `False`
-  - [ ] 4.1.5 multi-statement with a non-SELECT → `False`
-  - [ ] 4.1.6 malformed/unparseable SQL → `False`
+- [x] 4.1 `tests/utils/test_validators.py` *(spec: read-only-validation)*
+  - [x] 4.1.1 plain `SELECT` → `True`
+  - [x] 4.1.2 CTE (`WITH cte AS (SELECT ...) SELECT ...`) → `True`
+  - [x] 4.1.3 each blocked keyword `INSERT`/`UPDATE`/`DELETE`/`DROP`/`ALTER`/`TRUNCATE` → `False`
+  - [x] 4.1.4 lowercase variant (`insert into ...`) → `False`
+  - [x] 4.1.5 multi-statement with a non-SELECT → `False`
+  - [x] 4.1.6 malformed/unparseable SQL → `False`
 - [x] 4.2 `tests/repositories/test_query_repository.py` — update existing 3 tests to assert `QueryResult` shape (`dataframe`, `columns`, `row_count`) *(spec: sql-execution)* — pulled forward with 2.2; also fixed the incidental `tests/utils/test_database_initializer.py` caller
-- [ ] 4.3 `tests/services/test_sql_service.py` — mock `QueryRepository`; assert `run_query` delegates and returns `QueryResult` *(spec: database-access-boundary)*
-- [ ] 4.4 `tests/agents/test_sql_agent.py` — mock `self._agent.invoke` return dicts *(spec: natural-language-to-sql, sql-self-correction-retry, sql-execution, tool-message-summary)*
-  - [ ] 4.4.1 `is_identifiable=False` → `error_message="Unable to identify requested entities."`, `query_result=None`
-  - [ ] 4.4.2 inner returns `query_result` → `query_result` set, `error_message=None`, ToolMessage matches `"retrieved {n} rows. Columns: ..."`
-  - [ ] 4.4.3 inner `error_type="validation"` → `error_message="Generated query could not be validated."`, `query_result=None`
-  - [ ] 4.4.4 inner `error_type="database"` → `error_message="Unable to retrieve data at this time."`, `query_result=None`
-  - [ ] 4.4.5 `row_count==0` → `error_message="No data found for the requested query."`, `query_result=None`
-  - [ ] 4.4.6 `generated_sql` + `sql_explanation` written on success and execution-failure paths
-- [ ] 4.5 `tests/orchestration/test_graph.py` *(spec: workflow-state, database-access-boundary)*
-  - [ ] 4.5.1 `AnalyticsGraph.build()` returns a compiled graph
-  - [ ] 4.5.2 compiled graph includes `query_database` in its tool registry
-- [ ] 4.6 `tests/workflows/test_sql_pipeline.py` — integration over `initialized_engine` (in-memory SQLite); mock the inner agent's `validate_and_execute` *(spec: all)*
-  - [ ] 4.6.1 happy path → `query_result` populated, `generated_sql` written, ToolMessage template, `error_message=None`
-  - [ ] 4.6.2 unknown entities → `error_message` set, `query_result=None`, no DB call
-  - [ ] 4.6.3 execution retry → first call bad column (raises), second succeeds → result in state
-  - [ ] 4.6.4 read-only guard → `DELETE` blocked → `error_message="Generated query could not be validated."`
-  - [ ] 4.6.5 database error → `run_query` raises → `error_message="Unable to retrieve data at this time."`
-  - [ ] 4.6.6 empty result → `error_message="No data found for the requested query."`, `query_result=None`
+- [x] 4.3 `tests/services/test_sql_service.py` — mock `QueryRepository`; assert `run_query` delegates and returns `QueryResult` *(spec: database-access-boundary)*
+- [x] 4.4 `tests/agents/test_sql_agent.py` — mock `self._agent.invoke` return dicts *(spec: natural-language-to-sql, sql-self-correction-retry, sql-execution, tool-message-summary)*
+  - [x] 4.4.1 `is_identifiable=False` → `error_message="Unable to identify requested entities."`, `query_result=None`
+  - [x] 4.4.2 inner returns `query_result` → `query_result` set, `error_message=None`, ToolMessage matches `"retrieved {n} rows. Columns: ..."`
+  - [x] 4.4.3 inner `error_type="validation"` → `error_message="Generated query could not be validated."`, `query_result=None`
+  - [x] 4.4.4 inner `error_type="database"` → `error_message="Unable to retrieve data at this time."`, `query_result=None`
+  - [x] 4.4.5 `row_count==0` → `error_message="No data found for the requested query."`, `query_result=None`
+  - [x] 4.4.6 `generated_sql` + `sql_explanation` written on success and execution-failure paths
+- [x] 4.5 `tests/orchestration/test_graph.py` *(spec: workflow-state, database-access-boundary)*
+  - [x] 4.5.1 `AnalyticsGraph.build()` returns a compiled graph
+  - [x] 4.5.2 compiled graph includes `query_database` in its tool registry
+- [x] 4.6 `tests/workflows/test_sql_pipeline.py` — integration over `initialized_engine` (real SQLite); scripted fake inner agent drives the **real** `validate_and_execute` → `QueryService` → `QueryRepository` *(spec: all)*
+  - [x] 4.6.1 happy path → `query_result` populated, `generated_sql` written, ToolMessage template, `error_message=None`
+  - [x] 4.6.2 unknown entities → `error_message` set, `query_result=None`, no DB call
+  - [x] 4.6.3 execution retry → first bad column (real exec failure), second succeeds → result in state
+  - [x] 4.6.4 read-only guard → `DELETE` blocked → `error_message="Generated query could not be validated."`; DB asserted unchanged
+  - [x] 4.6.5 database error → real exec failure → `error_message="Unable to retrieve data at this time."`
+  - [x] 4.6.6 empty result → `error_message="No data found for the requested query."`, `query_result=None`
 
 **Checkpoint (final gate):**
 ```bash
