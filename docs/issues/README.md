@@ -6,7 +6,7 @@ All issues follow the `create_agent` + `ToolNode` architecture documented in `do
 
 | # | Issue | FRS source | Label |
 |---|---|---|---|
-| 1 | [query_database Tool (WorkflowState + AnalyticsGraph + SqlAgent)](01-query-database-tool.md) | §6.1, §6.2; FR-1–4 | `area:sql` |
+| 1 | [SQL Pipeline (WorkflowState + AnalyticsGraph + SqlAgent)](01-sql-pipeline.md) | §6.1, §6.2; FR-1–4 | `area:sql` |
 | 2 | [API Layer (FastAPI routes & Chat Service)](02-api-layer-fastapi.md) | SDS §9.3; tech-arch §15 | `area:api` |
 | 3 | [Streamlit UI](03-streamlit-ui.md) | §6.1, §6.6, §11; FR-1, FR-5 | `area:ui` |
 | 4 | [Results Table & CSV Export](04-results-table-csv-export.md) | §6.6, §11; FR-5, FR-12 | `area:ui` |
