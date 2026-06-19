@@ -47,7 +47,7 @@ All must pass — don't claim done or commit on red. No build step (Streamlit). 
 
 ## 8. Docstrings
 
-Every module, public class, and public function/method gets a triple-quoted docstring. Agents/nodes/services state purpose + inputs/outputs and name the Pydantic contract they consume/return. Skip trivial one-liners and dunder methods. Keep docstrings current when behavior changes.
+Every module, public class, and public function/method gets a triple-quoted docstring. Agents/tools/services state purpose + inputs/outputs and name the Pydantic contract they consume/return. Skip trivial one-liners and dunder methods. Keep docstrings current when behavior changes.
 
 ## 9. Logging
 
@@ -62,4 +62,4 @@ Never `print()` for diagnostics; never configure logging ad-hoc in modules. Log 
 
 ## 10. Class-Based / OOP
 
-Implement application code as **classes** — agents, services, repositories, and nodes are classes with one clear responsibility; inject dependencies via the constructor; one primary class per module. Functional code is fine only for: Pydantic models in `app/schemas/`, prompt constants in `app/prompts/`, thin entry points (`app/main.py` / `website/app.py` / `starter.py`), and small pure helpers in `app/utils/`.
+Implement application code as **classes** — agents, services, and repositories are classes with one clear responsibility; inject dependencies via the constructor; one primary class per module. Functional code is fine only for: Pydantic models in `app/schemas/`, prompt constants in `app/prompts/`, thin entry points (`app/main.py` / `website/app.py` / `app/starter.py`), small pure helpers in `app/utils/`, and the **`@tool`-decorated callables** an agent returns from `get_tools()` (closures that capture constructor-injected deps and use `InjectedState` / `Command`). The agent stays a class; only the tool callables it provides are functions.

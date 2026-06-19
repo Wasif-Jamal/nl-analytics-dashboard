@@ -2,7 +2,7 @@
 
 ## 1. Architecture Overview
 
-The Natural Language Analytics Dashboard shall use a layered architecture combined with a LangGraph-based multi-agent workflow.
+The Natural Language Analytics Dashboard shall use a layered architecture combined with a LangGraph `create_agent` tool-calling agent (a supervisor that sequences capability tools provided by the specialized agents; see §5–6 and the ADR in §16).
 
 The architecture separates:
 
@@ -76,15 +76,11 @@ Chat Service
 
 ↓
 
-LangGraph Workflow
+create_agent Supervisor (ReAct loop)
 
 ↓
 
-Specialized Agents
-
-↓
-
-Services
+Agent Tools (query_database · generate_visualization · generate_insights · suggest_followups)
 
 ↓
 
@@ -104,13 +100,12 @@ nl-analytics-dashboard/
 ├── pyproject.toml
 ├── uv.lock
 ├── .python-version
-├── starter.py                    # app bootstrap
-│
 ├── .env
 ├── .env.example
 │
 ├── app/                          # complete backend
 │   ├── main.py                   # FastAPI ASGI entry (uv run uvicorn app.main:app)
+│   ├── starter.py                # app bootstrap / factory
 │   │
 │   ├── routes/
 │   │   ├── chat_routes.py
@@ -130,23 +125,13 @@ nl-analytics-dashboard/
 │   │
 │   ├── prompts/
 │   │   ├── sql_prompt.py
-│   │   ├── visualization_prompt.py
+│   │   ├── orchestrator_prompt.py   # supervisor prompt (visualization is deterministic — no prompt)
 │   │   ├── insight_prompt.py
 │   │   └── followup_prompt.py
 │   │
 │   ├── orchestration/
-│   │   ├── graph.py
-│   │   ├── state.py
-│   │   ├── conditional_edges.py
-│   │   │
-│   │   └── nodes/
-│   │       ├── sql_generation_node.py
-│   │       ├── sql_validation_node.py
-│   │       ├── query_execution_node.py
-│   │       ├── visualization_node.py
-│   │       ├── insight_node.py
-│   │       ├── followup_node.py
-│   │       └── response_node.py
+│   │   ├── graph.py               # AnalyticsGraph — assembles tools, returns create_agent(...)
+│   │   └── state.py               # WorkflowState (MessagesState subclass) + initial_state
 │   │
 │   ├── services/
 │   │   ├── chat_service.py
@@ -200,32 +185,34 @@ nl-analytics-dashboard/
 
 # 5. Multi-Agent Architecture
 
-The application shall use specialized agents coordinated through LangGraph.
+The application shall use specialized agents, each of which **exposes a capability tool** (via `get_tools()`) to the `create_agent` supervisor. The supervisor sequences the tools; each tool returns a typed `Command` that updates the workflow state and reads any prior result from state via `InjectedState`.
 
-## SQL Agent
+## SQL Agent — `query_database` tool
 
 Responsibilities:
 
 * Understand database schema
-* Generate SQL
-* Correct invalid SQL
+* Generate SQL (keeps its own LLM and prompt)
+* Validate the SQL is read-only, then execute it through the Repository
+* Correct invalid SQL by feeding validation/execution errors back into a bounded retry loop
 * Explain generated SQL
 
 Output:
 
 * SQL query
 * Query explanation
+* Query result (DataFrame, serialized into state)
 
 The SQL Agent is the only agent allowed to interact with the database.
 
 ---
 
-## Visualization Agent
+## Visualization Agent — `generate_visualization` tool
 
 Responsibilities:
 
-* Analyze query result structure
-* Select visualization type
+* Analyze query result structure (read from state)
+* Select visualization type **deterministically** (result-shape → chart-type rules, FRS §6.3; no LLM)
 * Generate chart configuration
 
 Supported visualizations:
@@ -238,11 +225,11 @@ Supported visualizations:
 
 ---
 
-## Insight Agent
+## Insight Agent — `generate_insights` tool
 
 Responsibilities:
 
-* Analyze returned data
+* Analyze returned data (own data-grounded LLM call)
 * Identify trends
 * Identify outliers
 * Generate actionable business insights
@@ -253,110 +240,60 @@ No fabricated values or unsupported conclusions are permitted.
 
 ---
 
-## Follow-Up Agent
+## Follow-Up Agent — `suggest_followups` tool
 
 Responsibilities:
 
-* Generate relevant follow-up questions
+* Generate relevant follow-up questions (own LLM call over the question + returned data)
 * Support exploratory analytics workflows
 
 ---
 
 # 6. LangGraph Workflow
 
-The application shall use a state-driven workflow.
+The application shall use a state-driven **tool-calling agent** built with `create_agent`, which compiles the agent node, the prebuilt `ToolNode`, and the routing condition internally. There are **no hand-written workflow nodes**. `AnalyticsGraph` (`app/orchestration/graph.py`) assembles the four agent tools and returns the compiled graph.
 
 ## Workflow State
 
-The workflow state shall contain:
+`WorkflowState` subclasses `MessagesState` (inheriting `messages` and its reducer) and adds:
 
 * question
 * generated_sql
+* sql_explanation
 * query_result
 * chart_config
 * insights
 * followup_questions
 * error_message
 
----
-
-## Workflow Nodes
-
-### SQL Generation Node
-
-Input:
-
-* User Question
-
-Output:
-
-* Generated SQL
+Tools update these fields by returning a `Command`.
 
 ---
 
-### SQL Validation Node
+## Agent Loop
 
-Validates generated SQL.
+The supervisor runs the ReAct loop **model → (tool calls?) → `ToolNode` → model → … → end**:
 
-Allowed:
+1. **`query_database`** — generate SQL, validate read-only (allows `SELECT`; blocks `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `TRUNCATE`), execute, and retry-correct on error. Sets `generated_sql` / `sql_explanation` / `query_result`, or an `error_message`.
+2. If the query succeeds, the supervisor emits **`generate_visualization`**, **`generate_insights`**, and **`suggest_followups`** in a single turn; `ToolNode` runs them **in parallel** and merges their `Command` updates into state.
+3. When the supervisor has no further tool calls, the loop ends. The Chat Service reads the final aggregated state and returns it to the API layer, which serves the Streamlit UI.
 
-* SELECT
-
-Blocked:
-
-* INSERT
-* UPDATE
-* DELETE
-* DROP
-* ALTER
-* TRUNCATE
-
----
-
-### Query Execution Node
-
-Responsibilities:
-
-* Execute validated SQL
-* Retrieve results
-* Convert results into DataFrames
-
----
-
-### Parallel Analytics Nodes
-
-After successful query execution:
-
-* Visualization Node
-* Insight Node
-* Follow-Up Node
-
-shall execute in parallel.
-
----
-
-### Response Node
-
-Responsibilities:
-
-* Aggregate outputs
-* Build final response
-* Return the aggregated response to the API layer (via the Chat Service), which serves it to the Streamlit UI
+If `query_database` reports it could not answer (unidentifiable question, empty result, or DB error), the supervisor stops without calling the analysis tools.
 
 ---
 
 # 7. Agent Communication
 
-Agents shall exchange structured Pydantic schemas.
-
-No agent shall exchange unstructured text with another agent.
+Agent **outputs** shall be structured Pydantic schemas, written to typed workflow-state fields via `Command`. No agent exchanges unstructured data with another agent.
 
 Structured schemas shall be used for:
 
-* SQL generation output
-* Visualization output
-* Insight output
-* Follow-up output
+* SQL generation output (`SQLGenerationOutput`)
+* Visualization output (`ChartConfig`)
+* Insight output (`InsightOutput`)
+* Follow-up output (`FollowupOutput`)
+
+The supervisor coordinates the agents over the LangGraph messages channel (the ReAct loop). The `ToolMessage`s it receives are brief control summaries that drive routing — not data passed between agents; the data lives in the typed state fields above.
 
 ---
 
@@ -441,7 +378,7 @@ Responsibilities:
 
 # 12. Database Initialization
 
-The application shall initialize SQLite on startup via the bootstrap (`starter.py` → `create_app`).
+The application shall initialize SQLite on startup via the bootstrap (`app/starter.py` → `create_app`).
 
 Initialization process:
 
@@ -516,6 +453,29 @@ The domain services (`sql_service`, `visualization_service`, `insight_service`, 
 ## Request Flow
 
 ```text
-User → Streamlit UI → FastAPI (routes/) → Chat Service → LangGraph Workflow
-     → Specialized Agents → Services → Repositories → SQLite
+User → Streamlit UI → FastAPI (routes/) → Chat Service → create_agent supervisor
+     → agent tools (query_database · generate_visualization · generate_insights · suggest_followups)
+     → Repositories → SQLite
 ```
+
+---
+
+# 16. ADR — Pivot to a tool-calling agent (2026-06-18)
+
+**Status:** Accepted.
+
+**Context.** The original design (§5–6 as first written) specified a hand-wired seven-node LangGraph pipeline (SQL generation → validation → execution → parallel visualization/insight/follow-up → response). LangChain 1.x ships `create_agent`, a supervisor harness that builds the agent node, the prebuilt `ToolNode`, and the routing condition for us, and runs a ReAct loop over tools.
+
+**Decision.** Replace the node pipeline with a `create_agent` supervisor over four capability **tools**, one per specialized agent:
+
+* **`query_database`** keeps the SQL Agent's own LLM and self-corrects invalid SQL through a bounded retry loop — leveraging the ReAct loop instead of a separate correction node.
+* **`generate_insights`** / **`suggest_followups`** run each agent's own data-grounded LLM call (reading the result from state via `InjectedState`) — they *compute* results rather than storing supervisor-authored text, which strengthens the FR-9 anti-fabrication guarantee.
+* **`generate_visualization`** is deterministic (result-shape → chart-type rules), so it needs no LLM.
+
+State is a `MessagesState` subclass; tools return `Command` updates.
+
+**Consequences.**
+* Less orchestration code — no `nodes/` package or `conditional_edges`; `AnalyticsGraph` just assembles tools and calls `create_agent`.
+* Parallel analytics is preserved: the supervisor emits the three analysis tools in one turn and `ToolNode` runs them in parallel.
+* SQL self-correction is a natural product of the loop.
+* Functional behavior (FR-1…FR-12), the read-only rule (FRS §9), and the standard error messages (FRS §10) are unchanged — this is a "how", not a "what".

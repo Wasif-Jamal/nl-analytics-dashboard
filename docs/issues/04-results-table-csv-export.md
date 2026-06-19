@@ -2,6 +2,8 @@
 
 Returned data must be viewable as a raw table and exportable as CSV, so users can inspect and take away the underlying records. Source: FRS §6.6, §11; FR-5, FR-12.
 
+> Result data is available as the `query_result` field in `WorkflowState`, populated by the `query_database` tool (issue #1). The Streamlit UI reads this field from the API response to render the table.
+
 ## Acceptance Criteria
 
 1. Query results are displayed in a tabular view of the returned records.
