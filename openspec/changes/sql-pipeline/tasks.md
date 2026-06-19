@@ -40,8 +40,8 @@ uv run pytest
 
 ## 3. Phase 3 — Integration (graph wiring)
 
-- [ ] 3.1 `app/orchestration/graph.py` — `AnalyticsGraph(llm, query_service, retry_limit)`; `build()` returns `create_agent(model=llm, tools=SqlAgent(...).get_tools(), system_prompt=ORCHESTRATOR_PROMPT, state_schema=WorkflowState)` *(depends on 1.4, 2.3, 2.5)*
-- [ ] 3.2 Smoke-verify `build()` compiles with `state_schema=WorkflowState`; if `create_agent` requires `AgentState` fields, fall back to subclassing `AgentState` (per plan Risks) and note it
+- [x] 3.1 `app/orchestration/graph.py` — `AnalyticsGraph(llm, query_service, retry_limit)`; `build()` returns `create_agent(model=llm, tools=SqlAgent(...).get_tools(), system_prompt=ORCHESTRATOR_PROMPT, state_schema=WorkflowState)` *(depends on 1.4, 2.3, 2.5)*
+- [x] 3.2 Smoke-verified `build()` compiles with `state_schema=WorkflowState` (MessagesState subclass accepted — **no AgentState fallback needed**); nodes `__start__→model→tools→__end__`, `query_database` registered in `graph.nodes["tools"].bound.tools_by_name`
 
 **Checkpoint:**
 ```bash
