@@ -81,7 +81,7 @@ All error conditions SHALL be surfaced as `st.warning` messages. No raw JSON, st
 - **THEN** `st.warning(error_message)` is rendered; no SQL panel or dataframe is shown
 
 #### Scenario: network or connection failure
-- **WHEN** the HTTP request raises a `requests.ConnectionError` or any `requests.RequestException`
+- **WHEN** the HTTP request raises an `httpx.ConnectError` or any `httpx.RequestError`
 - **THEN** `st.warning("Could not connect to the server. Please try again.")` is shown; page state is otherwise unchanged
 
 #### Scenario: usable after failure

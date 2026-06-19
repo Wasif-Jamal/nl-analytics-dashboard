@@ -204,3 +204,31 @@ def test_usable_after_network_error() -> None:
     assert len(at.warning) > 0
     assert len(at.text_input) > 0
     assert len(at.button) > 0
+
+
+# ---------------------------------------------------------------------------
+# Tests — spec: future-fields-ignored
+# ---------------------------------------------------------------------------
+
+
+def test_future_fields_in_response_produce_no_extra_ui() -> None:
+    """Spec: response contains future fields — only SQL expander and dataframe rendered."""
+    data = _success_data()
+    data["insights"] = ["Sales peaked in January."]
+    data["followup_questions"] = ["What drove January sales?"]
+    data["chart_config"] = {"type": "bar", "x": "month", "y": "sales"}
+    data["session_history"] = ["Show monthly sales"]
+
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+    at.text_input[0].set_value("Show monthly sales")
+
+    with patch("httpx.post", return_value=_mock_response(data)):
+        at.button[0].click()
+        at.run()
+
+    # SQL expander and dataframe are rendered as normal.
+    assert len(at.expander) == 1
+    assert len(at.dataframe) == 1
+    # No warnings — future fields must not trigger error rendering.
+    assert len(at.warning) == 0
