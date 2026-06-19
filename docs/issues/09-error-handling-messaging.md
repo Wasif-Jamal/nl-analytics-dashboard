@@ -2,6 +2,8 @@
 
 The system must handle failure cases gracefully and present clear, consistent, user-facing messages rather than raw errors. This is the cross-cutting spec for error messaging referenced by other issues. Source: FRS §10 (and §12 reliability); applies across FR-1…FR-12.
 
+> Errors propagate through the `error_message` field in `WorkflowState`. Agent tools set this field via `Command(update={"error_message": "..."})` when a failure occurs; the Chat Service reads the final state and includes the message in the API response so the UI can display it without exposing raw exceptions or stack traces.
+
 ## Acceptance Criteria
 
 1. Each of the four FRS §10 scenarios surfaces its exact standard message:
