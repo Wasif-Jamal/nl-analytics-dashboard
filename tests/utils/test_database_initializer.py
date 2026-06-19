@@ -21,7 +21,9 @@ def _counts(engine: Engine) -> dict[str, int]:
     repo = QueryRepository(db_engine=engine)
     return {
         table: int(
-            repo.execute_select(f"SELECT COUNT(*) AS n FROM {table}").iloc[0]["n"]
+            repo.execute_select(f"SELECT COUNT(*) AS n FROM {table}").dataframe.iloc[0][
+                "n"
+            ]
         )
         for table in EXPECTED_COUNTS
     }
@@ -41,8 +43,8 @@ def test_dedup_keeps_one_row_per_key(initialized_engine: Engine):
     customers = repo.execute_select(
         "SELECT customer_id FROM customers WHERE customer_id = 'CG-1'"
     )
-    assert len(products) == 1
-    assert len(customers) == 1
+    assert products.row_count == 1
+    assert customers.row_count == 1
 
 
 def test_postal_code_leading_zero_preserved(initialized_engine: Engine):
@@ -51,7 +53,7 @@ def test_postal_code_leading_zero_preserved(initialized_engine: Engine):
     row = repo.execute_select(
         "SELECT postal_code FROM orders WHERE order_id = 'CA-2016-2'"
     )
-    assert row.iloc[0]["postal_code"] == "06010"
+    assert row.dataframe.iloc[0]["postal_code"] == "06010"
 
 
 def test_dates_stored_as_dates(initialized_engine: Engine):
@@ -76,8 +78,8 @@ def test_foreign_key_integrity(initialized_engine: Engine):
         "SELECT COUNT(*) AS n FROM order_items oi "
         "LEFT JOIN products p ON oi.product_id = p.product_id WHERE p.product_id IS NULL"
     )
-    assert int(orphan_orders.iloc[0]["n"]) == 0
-    assert int(orphan_products.iloc[0]["n"]) == 0
+    assert int(orphan_orders.dataframe.iloc[0]["n"]) == 0
+    assert int(orphan_products.dataframe.iloc[0]["n"]) == 0
 
 
 def test_load_is_idempotent(initialized_engine: Engine, sample_csv: str):

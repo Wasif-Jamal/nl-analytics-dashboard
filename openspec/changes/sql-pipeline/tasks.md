@@ -1,10 +1,10 @@
 ## 1. Phase 1 — Foundation (schemas, config, dependency)
 
-- [ ] 1.1 `uv add sqlglot` — add the SQL parser dependency (updates `pyproject.toml` + `uv.lock`)
-- [ ] 1.2 `app/schemas/sql_result.py` — add `QueryResult(BaseModel)` (`dataframe: pd.DataFrame`, `columns: list[str]`, `row_count: int`; `model_config = ConfigDict(arbitrary_types_allowed=True)`). Keep existing `SQLGenerationOutput`.
-- [ ] 1.3 `app/config/env_config.py` — add `sql_retry_limit: int = 3` to `Settings`
-- [ ] 1.4 `app/orchestration/state.py` — `WorkflowState(MessagesState)` with `question`, `generated_sql`, `sql_explanation`, `query_result`, `chart_config`, `insights`, `followup_questions`, `error_message` (analysis fields as placeholders)
-- [ ] 1.5 `.env.example` — document `GOOGLE_API_KEY`, `LLM_MODEL`, `LLM_TEMPERATURE`, `DATABASE_URL`, `CSV_PATH`, `SQL_RETRY_LIMIT`
+- [x] 1.1 `uv add sqlglot` — add the SQL parser dependency (updates `pyproject.toml` + `uv.lock`)
+- [x] 1.2 `app/schemas/sql_result.py` — add `QueryResult(BaseModel)` (`dataframe: pd.DataFrame`, `columns: list[str]`, `row_count: int`; `model_config = ConfigDict(arbitrary_types_allowed=True)`). Keep existing `SQLGenerationOutput`.
+- [x] 1.3 `app/config/env_config.py` — add `sql_retry_limit: int = 3` to `Settings`
+- [x] 1.4 `app/orchestration/state.py` — `WorkflowState(MessagesState)` with `question`, `generated_sql`, `sql_explanation`, `query_result`, `chart_config`, `insights`, `followup_questions`, `error_message` (analysis fields as placeholders)
+- [x] 1.5 `.env.example` — document `GOOGLE_API_KEY`, `LLM_MODEL`, `LLM_TEMPERATURE`, `DATABASE_URL`, `CSV_PATH`, `SQL_RETRY_LIMIT`
 
 **Checkpoint:**
 ```bash
@@ -19,15 +19,15 @@ uv run pytest
 
 Tasks 2.1–2.3 are independent of each other — **[PARALLEL]**. Task 2.4 depends on all three; 2.5 depends on 2.4.
 
-- [ ] 2.1 **[PARALLEL]** `app/utils/validators.py` — `validate_select_only(sql: str) -> bool` using `sqlglot.parse(sql, dialect="sqlite")`; return `False` on parse error or if any top-level statement is not `sqlglot.exp.Select`
-- [ ] 2.2 **[PARALLEL]** `app/repositories/query_repository.py` — update `execute_select(sql) -> QueryResult` (build `QueryResult` from the DataFrame: `columns`, `row_count`); keep it free of business logic, let SQLAlchemy errors propagate
-- [ ] 2.3 **[PARALLEL]** `app/prompts/orchestrator_prompt.py` — `ORCHESTRATOR_PROMPT` constant (minimal: call `query_database` first, then end)
-- [ ] 2.4 `app/services/sql_service.py` — `QueryService(repository: QueryRepository)` with `run_query(sql) -> QueryResult` delegating to the repository *(depends on 2.2, 1.2)*
-- [ ] 2.5 `app/agents/sql_agent.py` — `SqlAgent` + `SqlAgentState(AgentState)` *(depends on 1.4, 2.1, 2.4)*
-  - [ ] 2.5.1 `SqlAgentState(AgentState)` — adds `query_result: Optional[QueryResult]`, `error_type: Optional[str]` (verify `AgentState` import path)
-  - [ ] 2.5.2 inner `validate_and_execute` `@tool` (closure over `query_service`) — returns `Command` updating `SqlAgentState`; `error_type="validation"` on guard failure, `error_type="database"` on execution exception, `query_result` + summary `ToolMessage` on success
-  - [ ] 2.5.3 build inner agent via `create_agent(model=llm, tools=[validate_and_execute], system_prompt=SQL_SYSTEM_PROMPT, response_format=SQLGenerationOutput, state_schema=SqlAgentState)`
-  - [ ] 2.5.4 `query_database` `@tool` (returned by `get_tools()`) — invokes inner agent with `config={"recursion_limit": retry_limit * 2 + 1}`; maps `is_identifiable=False` / validation / database / empty / success to the correct `Command` updates (clears `error_message` on success, `query_result=None` on every failure; `ToolMessage` uses fixed template)
+- [x] 2.1 **[PARALLEL]** `app/utils/validators.py` — `validate_select_only(sql: str) -> bool` using `sqlglot.parse(sql, dialect="sqlite")`; return `False` on parse error or if any top-level statement is not `sqlglot.exp.Select`
+- [x] 2.2 **[PARALLEL]** `app/repositories/query_repository.py` — update `execute_select(sql) -> QueryResult` (build `QueryResult` from the DataFrame: `columns`, `row_count`); keep it free of business logic, let SQLAlchemy errors propagate
+- [x] 2.3 **[PARALLEL]** `app/prompts/orchestrator_prompt.py` — `ORCHESTRATOR_PROMPT` constant (minimal: call `query_database` first, then end)
+- [x] 2.4 `app/services/sql_service.py` — `QueryService(repository: QueryRepository)` with `run_query(sql) -> QueryResult` delegating to the repository *(depends on 2.2, 1.2)*
+- [x] 2.5 `app/agents/sql_agent.py` — `SqlAgent` + `SqlAgentState(AgentState)` *(depends on 1.4, 2.1, 2.4)*
+  - [x] 2.5.1 `SqlAgentState(AgentState)` — adds `query_result: Optional[QueryResult]`, `error_type: Optional[str]` (`from langchain.agents import AgentState` — verified)
+  - [x] 2.5.2 inner `validate_and_execute` `@tool` (closure over `query_service`) — returns `Command` updating `SqlAgentState`; `error_type="validation"` on guard failure, `error_type="database"` on execution exception, `query_result` + summary `ToolMessage` on success
+  - [x] 2.5.3 build inner agent via `create_agent(model=llm, tools=[validate_and_execute], system_prompt=SQL_SYSTEM_PROMPT, response_format=SQLGenerationOutput, state_schema=SqlAgentState)`
+  - [x] 2.5.4 `query_database` `@tool` (returned by `get_tools()`) — invokes inner agent with `config={"recursion_limit": retry_limit * 2 + 1}`; maps `is_identifiable=False` / validation / database / empty / success to the correct `Command` updates (clears `error_message` on success, `query_result=None` on every failure; `ToolMessage` uses fixed template)
 
 **Checkpoint:**
 ```bash
@@ -61,7 +61,7 @@ uv run pytest
   - [ ] 4.1.4 lowercase variant (`insert into ...`) → `False`
   - [ ] 4.1.5 multi-statement with a non-SELECT → `False`
   - [ ] 4.1.6 malformed/unparseable SQL → `False`
-- [ ] 4.2 `tests/repositories/test_query_repository.py` — update existing 3 tests to assert `QueryResult` shape (`dataframe`, `columns`, `row_count`) *(spec: sql-execution)*
+- [x] 4.2 `tests/repositories/test_query_repository.py` — update existing 3 tests to assert `QueryResult` shape (`dataframe`, `columns`, `row_count`) *(spec: sql-execution)* — pulled forward with 2.2; also fixed the incidental `tests/utils/test_database_initializer.py` caller
 - [ ] 4.3 `tests/services/test_sql_service.py` — mock `QueryRepository`; assert `run_query` delegates and returns `QueryResult` *(spec: database-access-boundary)*
 - [ ] 4.4 `tests/agents/test_sql_agent.py` — mock `self._agent.invoke` return dicts *(spec: natural-language-to-sql, sql-self-correction-retry, sql-execution, tool-message-summary)*
   - [ ] 4.4.1 `is_identifiable=False` → `error_message="Unable to identify requested entities."`, `query_result=None`
