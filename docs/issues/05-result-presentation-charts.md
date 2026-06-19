@@ -2,7 +2,7 @@
 
 The system must present results in the clearest form for their shape: a single value becomes a plain-language sentence; multi-row results render as an appropriate chart. Charts are exportable as PNG. Source: FRS §6.3, §11; FR-6, FR-7, FR-8.
 
-> Chart-type selection is implemented deterministically by the `generate_visualization` tool under the tool-calling agent architecture (issue #11).
+> Chart-type selection is implemented deterministically by the `generate_visualization` tool under the tool-calling agent architecture (issue #1).
 
 ## Acceptance Criteria
 

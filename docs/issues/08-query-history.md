@@ -2,7 +2,7 @@
 
 The system must keep a session-level, in-memory history of the questions a user has asked, and let them view and re-run previous questions. History is managed by the **Chat Service** in a server-side in-memory store keyed by a session UUID supplied by the Streamlit UI on every request. It is never written to or read from the database. Source: FRS §6.7, §7; FR-11.
 
-> The Chat Service (`app/services/chat_service.py`) invokes the compiled `create_agent` graph (issue #11) and appends each successfully answered question to the in-memory history for that session UUID. Questions that result in a non-`None` `error_message` in the final `WorkflowState` are never appended.
+> The Chat Service (`app/services/chat_service.py`) invokes the compiled `create_agent` graph (issue #1) and appends each successfully answered question to the in-memory history for that session UUID. Questions that result in a non-`None` `error_message` in the final `WorkflowState` are never appended.
 
 ## Design
 

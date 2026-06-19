@@ -2,7 +2,7 @@
 
 Business users submit a plain-English question; the system generates the corresponding SQL, validates it as read-only, executes it against the database, and returns the result as a structured payload. Source: FRS §6.1, §6.2; FR-1, FR-2, FR-3, FR-4.
 
-> Implemented as the `query_database` tool exposed by `SqlAgent.get_tools()` and executed by `ToolNode` inside the `create_agent` supervisor (issue #11). Generation, validation, and execution are a single atomic tool call with an internal self-correction retry loop.
+> Implemented as the `query_database` tool exposed by `SqlAgent.get_tools()` and executed by `ToolNode` inside the `create_agent` supervisor. Generation, validation, and execution are a single atomic tool call with an internal self-correction retry loop.
 
 ## Acceptance Criteria
 
