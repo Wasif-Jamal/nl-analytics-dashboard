@@ -25,6 +25,19 @@ Business users submit a plain-English question; the system generates the corresp
 | Query executes successfully but returns zero rows | `No data found for the requested query.` |
 | Database is unreachable or raises a runtime error | `Unable to retrieve data at this time.` |
 
+## Architecture Scope
+
+This issue delivers the complete SQL pipeline and the graph it runs in:
+
+| Component | Path | Role |
+|---|---|---|
+| `WorkflowState` | `app/schemas/workflow_state.py` | `MessagesState` subclass — adds `question`, `generated_sql`, `sql_explanation`, `query_result`, `error_message` |
+| `SqlAgent` | `app/agents/sql_agent.py` | Class exposing `get_tools() → [query_database]`; LLM + repository injected via constructor |
+| `AnalyticsGraph` | `app/orchestration/graph.py` | `build()` returns `create_agent(model, tools=[query_database], system_prompt=..., state_schema=WorkflowState)` |
+| `validate_select_only` | `app/utils/validators.py` | Read-only guard used inside the tool |
+
+The graph in this issue is intentionally configured with **only** the `query_database` tool. Visualization, insight, and follow-up tools are added in later issues (#5, #6, #7). `create_agent` accepts any tool list, so extending it requires no structural change.
+
 ## Implementation Notes
 
 - `SqlAgent` class in `app/agents/sql_agent.py` — exposes `get_tools()` returning `[query_database]`.
@@ -33,11 +46,11 @@ Business users submit a plain-English question; the system generates the corresp
 - Read-only validation lives in `app/utils/validators.py` (`validate_select_only(sql) -> bool`).
 - Execution goes through `QueryRepository.execute_select(sql) -> pd.DataFrame`.
 - Tool returns a `Command(update={...})` with `InjectedToolCallId` — a brief `ToolMessage` summary, never the full result set.
+- Reused: `SQL_SYSTEM_PROMPT` (`app/prompts/sql_prompt.py`), `SQLGenerationOutput` (`app/schemas/sql_result.py`), `QueryRepository` (`app/repositories/query_repository.py`).
 
 ## Out of Scope
 
-- Visualization, insights, and follow-up generation (separate tools — issues #4, #5, #6).
-- FastAPI / Chat Service wiring (issue #10).
-- Full `create_agent` supervisor assembly (issue #11).
-- UI presentation (issue #3).
+- Visualization, insights, and follow-up generation (separate tools — issues #5, #6, #7).
+- FastAPI / Chat Service wiring (issue #2).
+- Streamlit UI (issue #3).
 - Authentication / authorization (FRS §13 — out of scope for the product).

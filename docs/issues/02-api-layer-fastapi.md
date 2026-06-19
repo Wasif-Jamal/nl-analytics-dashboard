@@ -2,14 +2,16 @@
 
 Expose the analytics workflow over an HTTP API built with FastAPI, so the Streamlit UI (and any other client) submits questions and receives responses through well-defined endpoints. A Chat Service bridges the API and the LangGraph workflow. This is the design/infrastructure layer that carries FR-1 (submit questions) and response delivery. Source: SDS §9.3; `decisions/technical_architecture.md` §15.
 
+> The Chat Service invokes the compiled `create_agent` graph produced by `AnalyticsGraph.build()` (issue #1) and manages in-memory session history. The Streamlit UI (issue #3) consumes this API rather than invoking the workflow in-process.
+
 ## Acceptance Criteria
 
 1. The FastAPI application is assembled in `app/main.py` and runs via `uv run uvicorn app.main:app`.
-2. `app/routes/` exposes a submit-question endpoint (accepts an NL question, returns the analytics response) and a health endpoint.
-3. Request and response payloads are validated by the Pydantic schemas in `app/schemas/` (`requests`, `responses`).
+2. `app/routes/` exposes a submit-question endpoint (accepts an NL question + `session_uuid`, returns the analytics response) and a health endpoint.
+3. Request and response payloads are validated by the Pydantic schemas in `app/schemas/requests` and `app/schemas/responses`.
 4. Routes contain no business logic — they delegate to the Chat Service (`app/services/chat_service.py`).
-5. The Chat Service invokes the LangGraph workflow (the compiled `create_agent` graph — issue #11) and returns the aggregated response; the domain services remain independent of LangGraph.
-6. The Streamlit UI (`website/app.py`) consumes this API rather than invoking the workflow in-process.
+5. The Chat Service invokes the compiled `create_agent` graph (issue #1) and returns the aggregated response; domain services remain independent of LangGraph.
+6. The Chat Service maintains an in-memory `dict[session_uuid → list[question]]` history; successfully answered questions are appended, errored ones are not.
 
 ## Error Scenarios
 
@@ -22,5 +24,5 @@ Expose the analytics workflow over an HTTP API built with FastAPI, so the Stream
 ## Out of Scope
 
 - Authentication / authorization (FRS §13).
-- The feature behaviors themselves (issues #1–#9) — this issue is the transport/bridge only.
+- The feature behaviors themselves (issues #1, #3–#9) — this issue is the transport/bridge only.
 - Rate limiting, API versioning, and external/public exposure.
