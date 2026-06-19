@@ -2,7 +2,7 @@
 
 High-level (epic-level) issues derived from `docs/FRS.md`. These markdown files are the source of truth for the issue bodies created on GitHub (`Wasif-Jamal/nl-analytics-dashboard`). Each issue has: a requirement linked to its FRS section, numbered acceptance criteria, error scenarios, and an out-of-scope section.
 
-All issues follow the `create_agent` + `ToolNode` architecture (issue #11). Issues #1–#3 are the foundational build ladder; issues #4–#11 extend the pipeline with analysis, history, and error features.
+All issues follow the `create_agent` + `ToolNode` architecture documented in `docs/SDS.md` §6–8 and `docs/decisions/technical_architecture.md` §16. Issues #1–#3 are the foundational build ladder; issues #4–#9 extend the pipeline with analysis, history, and error features.
 
 | # | Issue | FRS source | Label |
 |---|---|---|---|
@@ -15,7 +15,6 @@ All issues follow the `create_agent` + `ToolNode` architecture (issue #11). Issu
 | 7 | [Suggested Follow-Up Questions](07-suggested-followup-questions.md) | §6.5; FR-10 | `area:insights` |
 | 8 | [Query History (session)](08-query-history.md) | §6.7, §7; FR-11 | `area:ui` |
 | 9 | [Error Handling & Messaging](09-error-handling-messaging.md) | §10, §12 | `area:ui` |
-| 11 | [Tool-Calling Agent Architecture](11-tool-calling-agent-architecture.md) (GitHub #13) | SDS §6–8; tech-arch §5–6, §16 | `area:orchestration` |
 
 All issues also carry the `enhancement` label.
 
@@ -28,4 +27,3 @@ All issues also carry the `enhancement` label.
 | 3 | #3 | Streamlit UI (end-to-end NL→SQL→result in browser) |
 | 4 | #5, #6, #7 | Visualization, insights, follow-up tools (extend graph; can be parallelised) |
 | 5 | #4, #8, #9 | Results table/CSV export, query history panel, error messaging UI |
-| 6 | #11 | Full 4-agent supervisor (all tools wired, parallel analysis confirmed) |
