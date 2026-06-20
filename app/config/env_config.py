@@ -17,6 +17,8 @@ class Settings(BaseSettings):
         llm_model: Gemini model identifier (default ``gemini-2.0-flash``).
         llm_temperature: Sampling temperature for the LLM (default 0.0 for determinism).
         sql_retry_limit: Max self-correction attempts for the SQL agent (default 3).
+        langchain_verbose: Enable LangChain verbose mode (inputs/outputs per chain step).
+        langchain_debug: Enable LangChain debug mode (full message payloads and tool calls).
     """
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
@@ -27,6 +29,8 @@ class Settings(BaseSettings):
     llm_model: str = "gemini-2.0-flash"
     llm_temperature: float = 0.0
     sql_retry_limit: int = 3
+    langchain_verbose: bool = False
+    langchain_debug: bool = False
 
 
 settings = Settings()

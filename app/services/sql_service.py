@@ -34,5 +34,5 @@ class QueryService:
         Returns:
             The :class:`QueryResult` produced by the repository.
         """
-        logger.info("Running validated query through repository")
+        logger.info("Running validated query (%d chars) through repository", len(sql))
         return self._repository.execute_select(sql)

@@ -116,6 +116,7 @@ class DatabaseInitializer:
 
     def _read_csv(self) -> pd.DataFrame:
         """Read the CSV with correct dtypes and parsed dates."""
+        logger.info("Reading CSV from %s", self._csv_path)
         frame = pd.read_csv(
             self._csv_path,
             dtype={"Postal Code": str},
@@ -128,4 +129,5 @@ class DatabaseInitializer:
         frame["Ship Date"] = pd.to_datetime(
             frame["Ship Date"], format="%m/%d/%Y"
         ).dt.date
+        logger.debug("CSV read complete: %d raw rows", len(frame))
         return frame

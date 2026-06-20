@@ -5,6 +5,7 @@ Provides :func:`get_llm`, the single sanctioned way to obtain a configured
 the LLM directly in agent or node code.
 """
 
+from langchain_core.globals import set_debug, set_verbose
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.config.env_config import settings
@@ -26,6 +27,12 @@ class LlmConfig:
         Returns:
             A ``ChatGoogleGenerativeAI`` client ready for structured-output calls.
         """
+        if settings.langchain_verbose:
+            set_verbose(True)
+            logger.info("LangChain verbose mode enabled")
+        if settings.langchain_debug:
+            set_debug(True)
+            logger.info("LangChain debug mode enabled")
         logger.info(
             "Initializing LLM: model=%s temperature=%s",
             settings.llm_model,

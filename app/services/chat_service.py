@@ -82,7 +82,15 @@ class ChatService:
         Returns:
             An ``AnalyticsResponse`` with HTTP 200 in all cases.
         """
+        logger.info(
+            "ask() invoked: session=%s question=%r",
+            request.session_uuid,
+            request.question[:120],
+        )
         try:
+            logger.debug(
+                "Invoking analytics graph for session=%s", request.session_uuid
+            )
             result = await asyncio.to_thread(
                 self._graph.invoke,
                 {

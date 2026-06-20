@@ -33,11 +33,15 @@ class QueryRepository:
             A :class:`QueryResult` wrapping the result DataFrame, its column
             names, and the row count (an empty DataFrame yields ``row_count=0``).
         """
-        logger.info("Executing query")
+        logger.info("Executing query (%d chars)", len(sql))
         with self._engine.connect() as connection:
             dataframe = pd.read_sql(text(sql), connection)
-        return QueryResult(
+        result = QueryResult(
             dataframe=dataframe,
             columns=list(dataframe.columns),
             row_count=len(dataframe),
         )
+        logger.info(
+            "Query complete: %d row(s), columns=%s", result.row_count, result.columns
+        )
+        return result
