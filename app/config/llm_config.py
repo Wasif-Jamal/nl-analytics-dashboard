@@ -9,7 +9,7 @@ from langchain_core.globals import set_debug, set_verbose
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.config.env_config import settings
-from app.config.log_config import get_logger
+from app.config.log_config import configure_langchain_logging, get_logger
 
 logger = get_logger(__name__)
 
@@ -33,6 +33,10 @@ class LlmConfig:
         if settings.langchain_debug:
             set_debug(True)
             logger.info("LangChain debug mode enabled")
+        configure_langchain_logging(
+            verbose=settings.langchain_verbose,
+            debug=settings.langchain_debug,
+        )
         logger.info(
             "Initializing LLM: model=%s temperature=%s",
             settings.llm_model,
