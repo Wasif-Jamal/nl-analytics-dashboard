@@ -5,9 +5,7 @@
 Defines the FastAPI HTTP layer — request/response schemas, endpoint contracts, the `ChatService` workflow bridge, session history management, application startup singleton construction, and error-response safety rules. Together these requirements govern all HTTP-level behaviour of the analytics dashboard backend.
 
 ---
-
 ## Requirements
-
 ### Requirement: request-schema
 An analytics request SHALL be represented as `AnalyticsRequest` in `app/schemas/requests.py` with two required fields: `question` (non-empty string) and `session_uuid` (string identifying the caller's session). FastAPI validates the payload against this schema on every inbound request.
 
@@ -26,28 +24,24 @@ An analytics request SHALL be represented as `AnalyticsRequest` in `app/schemas/
 ---
 
 ### Requirement: response-schema
-An analytics response SHALL be represented as `AnalyticsResponse` in `app/schemas/responses.py` with the following fields (all analytics fields are `Optional` and default to `None`):
+
+`AnalyticsResponse` in `app/schemas/responses.py` SHALL include three additional `Optional` fields (defaulting to `None`) to carry serialized query rows to the UI:
 
 | Field | Type | Notes |
 |---|---|---|
-| `question` | `str` | Echo of the submitted question |
-| `generated_sql` | `Optional[str]` | SQL produced by the SQL agent |
-| `sql_explanation` | `Optional[str]` | Plain-English SQL explanation |
-| `chart_config` | `Optional[dict]` | Visualization config (populated by issue #5) |
-| `insights` | `Optional[list[str]]` | Data-grounded insights (populated by issue #6) |
-| `followup_questions` | `Optional[list[str]]` | Suggested follow-ups (populated by issue #7) |
-| `error_message` | `Optional[str]` | Standard FRS §10 message on failure; `None` on success |
-| `session_history` | `list[str]` | Ordered list of successfully answered questions for this session |
+| `query_result` | `Optional[list[dict]]` | Serialized rows — `QueryResult.dataframe.to_dict(orient="records")`; `None` when no data was returned or an error occurred |
+| `columns` | `Optional[list[str]]` | Ordered column names from `QueryResult.columns`; `None` when `query_result` is `None` |
+| `row_count` | `Optional[int]` | Row count from `QueryResult.row_count`; `None` when `query_result` is `None` |
 
-The `HealthResponse` schema in the same module has a single field: `status: str`.
+All previously defined fields (`question`, `generated_sql`, `sql_explanation`, `chart_config`, `insights`, `followup_questions`, `error_message`, `session_history`) are unchanged.
 
-#### Scenario: successful analytics response
-- **WHEN** the workflow completes without error
-- **THEN** `AnalyticsResponse` is returned with `error_message=None`, `session_history` containing the current question (appended), and all populated state fields set
+#### Scenario: successful workflow — query_result populated
+- **WHEN** the workflow completes without error and `query_result` state is set
+- **THEN** `AnalyticsResponse` is returned with `query_result` as a list of row dicts, `columns` as a list of column name strings, and `row_count` as an integer
 
-#### Scenario: workflow-error analytics response
-- **WHEN** the workflow sets `error_message` in state
-- **THEN** `AnalyticsResponse` is returned with `error_message` set to the standard FRS §10 message; `session_history` does NOT contain the current question
+#### Scenario: workflow error — query_result absent
+- **WHEN** the workflow sets `error_message` in state (no data was retrieved)
+- **THEN** `query_result`, `columns`, and `row_count` are all `None` in the response
 
 ---
 
@@ -74,21 +68,16 @@ The `HealthResponse` schema in the same module has a single field: `status: str`
 ---
 
 ### Requirement: chat-service-workflow-bridge
-`ChatService` in `app/services/chat_service.py` SHALL be the sole component that invokes the compiled `create_agent` graph. It accepts a `CompiledStateGraph` via constructor injection. Its `ask(request: AnalyticsRequest) -> AnalyticsResponse` method runs the workflow and maps final state to the response schema.
 
-#### Scenario: successful workflow invocation
-- **WHEN** `ChatService.ask()` invokes the graph and the graph returns state with `error_message=None`
-- **THEN** `AnalyticsResponse` is constructed from the final state fields; `question` is appended to the session history; `session_history` in the response reflects the updated list
+`ChatService.ask()` SHALL serialize `state["query_result"]` into the three new response fields when the graph returns state without `error_message` and `query_result` is set.
 
-#### Scenario: workflow sets error_message
-- **WHEN** the graph returns state with `error_message` set (e.g. `"Unable to identify requested entities."`)
-- **THEN** `AnalyticsResponse` is returned with `error_message` propagated; the question is NOT appended to session history; `session_history` is unchanged
+#### Scenario: query_result in state — serialization
+- **WHEN** `ChatService.ask()` reads final state with `query_result` set (a `QueryResult` object)
+- **THEN** `AnalyticsResponse.query_result` is set to `query_result.dataframe.to_dict(orient="records")`, `columns` to `query_result.columns`, and `row_count` to `query_result.row_count`
 
-#### Scenario: unhandled exception from graph
-- **WHEN** the graph raises any exception during invocation
-- **THEN** `ChatService` catches it, logs it, and returns `AnalyticsResponse` with `error_message="Unable to retrieve data at this time."` and HTTP 200; no stack trace is exposed; the question is NOT appended to session history
-
----
+#### Scenario: query_result absent in state
+- **WHEN** `ChatService.ask()` reads final state with `query_result` as `None` (error path or no data)
+- **THEN** `AnalyticsResponse.query_result`, `columns`, and `row_count` remain `None`
 
 ### Requirement: session-history
 `ChatService` SHALL maintain an in-memory `dict[str, list[str]]` keyed by `session_uuid`. Only successfully answered questions (where `error_message` is `None` after the workflow completes) are appended.
@@ -130,3 +119,4 @@ All application-level errors — both workflow `error_message` fields and unhand
 #### Scenario: no stack trace leakage
 - **WHEN** an unhandled exception occurs inside `ChatService.ask()`
 - **THEN** the `AnalyticsResponse` contains only the safe error message; the full exception is logged server-side only
+
