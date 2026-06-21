@@ -68,9 +68,11 @@ class ChatService:
 
         Offloads the blocking ``graph.invoke()`` call to a thread pool via
         ``asyncio.to_thread``, then maps final workflow state onto
-        ``AnalyticsResponse`` in the event loop. Appends the question to
-        session history if and only if the workflow completes without an
-        ``error_message``. Any unhandled exception is caught and mapped to the
+        ``AnalyticsResponse`` in the event loop. If ``query_result`` is set in
+        state, serializes the ``pd.DataFrame`` to ``list[dict]`` via
+        ``to_dict(orient="records")`` so the response is JSON-safe. Appends the
+        question to session history if and only if the workflow completes without
+        an ``error_message``. Any unhandled exception is caught and mapped to the
         standard FRS §10 database-error message; no stack trace is exposed.
 
         Args:
@@ -80,7 +82,15 @@ class ChatService:
         Returns:
             An ``AnalyticsResponse`` with HTTP 200 in all cases.
         """
+        logger.info(
+            "ask() invoked: session=%s question=%r",
+            request.session_uuid,
+            request.question[:120],
+        )
         try:
+            logger.debug(
+                "Invoking analytics graph for session=%s", request.session_uuid
+            )
             result = await asyncio.to_thread(
                 self._graph.invoke,
                 {
@@ -96,6 +106,15 @@ class ChatService:
                     error_message,
                 )
                 error_message = _ERR_DATABASE
+            # Serialize QueryResult (DataFrame) into JSON-safe fields for the response.
+            query_result_obj = result.get("query_result")
+            serialized_rows: list[dict] | None = None
+            columns: list[str] | None = None
+            row_count: int | None = None
+            if query_result_obj is not None:
+                serialized_rows = query_result_obj.dataframe.to_dict(orient="records")
+                columns = query_result_obj.columns
+                row_count = query_result_obj.row_count
             # History mutations run in the event loop (after the await) —
             # single-threaded, no lock required.
             history = self._history.setdefault(request.session_uuid, [])
@@ -111,6 +130,9 @@ class ChatService:
                 question=request.question,
                 generated_sql=result.get("generated_sql"),
                 sql_explanation=result.get("sql_explanation"),
+                query_result=serialized_rows,
+                columns=columns,
+                row_count=row_count,
                 chart_config=result.get("chart_config"),
                 insights=result.get("insights"),
                 followup_questions=result.get("followup_questions"),

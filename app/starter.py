@@ -37,13 +37,17 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Natural Language Analytics Dashboard API")
 
+    logger.info("Initializing LLM")
     llm = get_llm()
+    logger.info("Creating QueryService")
     query_service = QueryService()
+    logger.info("Building analytics supervisor graph")
     graph = AnalyticsGraph(llm, query_service).build()
+    logger.info("Creating ChatService")
     chat_service = ChatService(graph)
 
     app.include_router(ChatRouter(chat_service).router)
     app.include_router(health_router)
 
-    logger.info("Application startup complete")
+    logger.info("Application startup complete — ready to serve requests")
     return app

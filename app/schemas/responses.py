@@ -24,6 +24,12 @@ class AnalyticsResponse(BaseModel):
         question: Echo of the submitted question.
         generated_sql: SQL produced by the SQL agent; ``None`` on error.
         sql_explanation: Plain-English explanation of the SQL; ``None`` on error.
+        query_result: Serialized rows from ``QueryResult.dataframe.to_dict(orient="records")``;
+            ``None`` when no data was returned or an error occurred.
+        columns: Ordered column names from ``QueryResult.columns``; ``None`` when
+            ``query_result`` is ``None``.
+        row_count: Row count from ``QueryResult.row_count``; ``None`` when
+            ``query_result`` is ``None``.
         chart_config: Visualization config (populated by issue #5).
         insights: Data-grounded insights (populated by issue #6).
         followup_questions: Suggested follow-up questions (populated by issue #7).
@@ -35,6 +41,9 @@ class AnalyticsResponse(BaseModel):
     question: str
     generated_sql: Optional[str] = None
     sql_explanation: Optional[str] = None
+    query_result: Optional[list[dict]] = None
+    columns: Optional[list[str]] = None
+    row_count: Optional[int] = None
     chart_config: Optional[dict] = None
     insights: Optional[list[str]] = None
     followup_questions: Optional[list[str]] = None

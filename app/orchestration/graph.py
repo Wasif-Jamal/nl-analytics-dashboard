@@ -44,6 +44,7 @@ class AnalyticsGraph:
         self._retry_limit = (
             retry_limit if retry_limit is not None else settings.sql_retry_limit
         )
+        logger.info("AnalyticsGraph configured (retry_limit=%d)", self._retry_limit)
 
     def build(self) -> CompiledStateGraph:
         """Assemble the tools and return the compiled supervisor graph.
@@ -54,10 +55,15 @@ class AnalyticsGraph:
         """
         sql_agent = SqlAgent(self._llm, self._query_service, self._retry_limit)
         tools = sql_agent.get_tools()
-        logger.info("Building analytics supervisor with %d tool(s)", len(tools))
-        return create_agent(
+        tool_names = [t.name for t in tools]
+        logger.info(
+            "Building analytics supervisor with %d tool(s): %s", len(tools), tool_names
+        )
+        graph = create_agent(
             model=self._llm,
             tools=tools,
             system_prompt=ORCHESTRATOR_PROMPT,
             state_schema=WorkflowState,
         )
+        logger.info("Supervisor graph compiled successfully")
+        return graph

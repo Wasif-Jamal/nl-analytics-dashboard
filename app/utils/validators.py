@@ -41,6 +41,7 @@ def validate_select_only(sql: str) -> bool:
         return False
 
     if all(isinstance(stmt, exp.Select) for stmt in real_statements):
+        logger.debug("SQL validation passed: %d statement(s)", len(real_statements))
         return True
 
     logger.warning("SQL validation failed: non-SELECT statement detected")

@@ -8,9 +8,12 @@ The router is instantiated with a ``ChatService`` dependency in
 
 from fastapi import APIRouter
 
+from app.config.log_config import get_logger
 from app.schemas.requests import AnalyticsRequest
 from app.schemas.responses import AnalyticsResponse
 from app.services.chat_service import ChatService
+
+logger = get_logger(__name__)
 
 
 class ChatRouter:
@@ -49,4 +52,5 @@ class ChatRouter:
         Returns:
             The ``AnalyticsResponse`` produced by the Chat Service.
         """
+        logger.info("POST /api/chat session=%s", request.session_uuid)
         return await self._chat_service.ask(request)

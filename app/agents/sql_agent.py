@@ -76,6 +76,7 @@ class SqlAgent:
         self._retry_limit = (
             retry_limit if retry_limit is not None else settings.sql_retry_limit
         )
+        logger.info("SqlAgent initializing (retry_limit=%d)", self._retry_limit)
         self._agent = create_agent(
             model=llm,
             tools=[self._build_validate_and_execute()],
@@ -107,6 +108,10 @@ class SqlAgent:
                 ``ToolMessage`` summary.
             """
             if not validate_select_only(sql):
+                logger.warning(
+                    "validate_and_execute: read-only check failed for SQL: %s",
+                    sql[:200],
+                )
                 return Command(
                     update={
                         "error_type": "validation",
@@ -121,6 +126,7 @@ class SqlAgent:
                         ],
                     }
                 )
+            logger.debug("SQL passed read-only validation: %s", sql[:200])
             try:
                 result = query_service.run_query(sql)
             except Exception as exc:  # noqa: BLE001 — classified, fed back to the agent
@@ -138,6 +144,11 @@ class SqlAgent:
                         ],
                     }
                 )
+            logger.info(
+                "validate_and_execute: query returned %d row(s), columns=%s",
+                result.row_count,
+                result.columns,
+            )
             summary = (
                 f"retrieved {result.row_count} rows. "
                 f"Columns: {', '.join(result.columns)}"
@@ -186,13 +197,23 @@ class SqlAgent:
             Returns:
                 A ``Command`` updating the workflow state.
             """
+            logger.info("query_database invoked: question=%r", question[:120])
             inner = agent.invoke(
                 {"messages": [{"role": "user", "content": question}]},
                 config={"recursion_limit": retry_limit * 2 + 1},
             )
             output: SQLGenerationOutput = inner["structured_response"]
+            logger.debug(
+                "Inner SQL agent finished: identifiable=%s sql=%s",
+                output.is_identifiable,
+                (output.sql or "")[:200],
+            )
 
             if not output.is_identifiable:
+                logger.warning(
+                    "query_database: entities not identifiable in schema — question=%r",
+                    question[:120],
+                )
                 return Command(
                     update={
                         "error_message": _ERR_UNIDENTIFIED,
@@ -209,11 +230,16 @@ class SqlAgent:
                 "generated_sql": output.sql,
                 "sql_explanation": output.explanation,
             }
+            logger.info("Generated SQL: %s", (output.sql or "")[:300])
             query_result: QueryResult | None = inner.get("query_result")
             error_type: str | None = inner.get("error_type")
 
             if query_result is None:
                 message = _ERR_DATABASE if error_type == "database" else _ERR_VALIDATION
+                logger.warning(
+                    "query_database: no result after inner agent (error_type=%s)",
+                    error_type,
+                )
                 return Command(
                     update={
                         **base_update,
@@ -226,6 +252,7 @@ class SqlAgent:
                 )
 
             if query_result.row_count == 0:
+                logger.warning("query_database: query succeeded but returned 0 rows")
                 return Command(
                     update={
                         **base_update,
@@ -237,6 +264,11 @@ class SqlAgent:
                     }
                 )
 
+            logger.info(
+                "query_database succeeded: %d row(s), columns=%s",
+                query_result.row_count,
+                query_result.columns,
+            )
             summary = (
                 f"retrieved {query_result.row_count} rows. "
                 f"Columns: {', '.join(query_result.columns)}"

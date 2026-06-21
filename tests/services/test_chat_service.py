@@ -4,15 +4,18 @@ All tests mock the compiled graph via MagicMock so no LLM call or DB
 interaction occurs. ``ask()`` is a coroutine; tests invoke it with
 ``asyncio.run()`` — no additional pytest-asyncio dependency required.
 Each test maps 1:1 to a spec scenario in the api-layer-fastapi spec
-(spec: chat-service-workflow-bridge, session-history, error-response-safety).
+(spec: chat-service-workflow-bridge, session-history, error-response-safety)
+and the streamlit-ui spec (spec: response-schema).
 """
 
 import asyncio
 from unittest.mock import MagicMock
 
+import pandas as pd
 import pytest
 
 from app.schemas.requests import AnalyticsRequest
+from app.schemas.sql_result import QueryResult
 from app.services.chat_service import ChatService
 
 # ---------------------------------------------------------------------------
@@ -211,3 +214,37 @@ def test_non_allowlist_error_replaced_with_database_error(
 
     assert resp.error_message == _ERR_DATABASE
     assert "internal graph failure" not in (resp.error_message or "")
+
+
+# ---------------------------------------------------------------------------
+# Tests — spec: response-schema (streamlit-ui — query_result serialization)
+# ---------------------------------------------------------------------------
+
+
+def test_query_result_serialized_in_response(
+    service: ChatService, mock_graph: MagicMock
+) -> None:
+    """Spec: successful workflow — query_result serialized to list[dict] in response."""
+    qr = QueryResult(
+        dataframe=pd.DataFrame([{"month": "Jan", "sales": 1000}]),
+        columns=["month", "sales"],
+        row_count=1,
+    )
+    mock_graph.invoke.return_value = _make_state(query_result=qr)
+    resp = _run(service.ask(_make_request()))
+
+    assert resp.query_result == [{"month": "Jan", "sales": 1000}]
+    assert resp.columns == ["month", "sales"]
+    assert resp.row_count == 1
+
+
+def test_query_result_none_when_absent(
+    service: ChatService, mock_graph: MagicMock
+) -> None:
+    """Spec: workflow error path — query_result, columns, row_count all None in response."""
+    mock_graph.invoke.return_value = _make_state(query_result=None)
+    resp = _run(service.ask(_make_request()))
+
+    assert resp.query_result is None
+    assert resp.columns is None
+    assert resp.row_count is None
