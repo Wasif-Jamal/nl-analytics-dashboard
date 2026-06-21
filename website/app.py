@@ -12,7 +12,7 @@ import streamlit as st
 
 API_BASE_URL = "http://localhost:8000"
 
-st.set_page_config(page_title="Natural Language Analytics Dashboard")
+st.set_page_config(page_title="Natural Language Analytics Dashboard", layout="wide")
 st.title("Natural Language Analytics Dashboard")
 
 if "session_uuid" not in st.session_state:
@@ -45,8 +45,14 @@ if submitted:
                         with st.expander("Generated SQL"):
                             st.code(generated_sql, language="sql")
                     query_result = data.get("query_result")
+                    columns = data.get("columns") or []
+                    row_count = data.get("row_count") or 0
                     if query_result:
-                        st.dataframe(query_result)
+                        if row_count == 1 and len(columns) == 1:
+                            value = query_result[0][columns[0]]
+                            st.metric(label=columns[0], value=value)
+                        else:
+                            st.dataframe(query_result)
             except httpx.ConnectError:
                 st.warning("Could not connect to the server. Please try again.")
             except httpx.RequestError:

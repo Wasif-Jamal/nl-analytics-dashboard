@@ -146,6 +146,31 @@ def test_successful_response_shows_dataframe() -> None:
     assert len(at.dataframe) > 0
 
 
+def test_single_scalar_result_shows_metric_not_dataframe() -> None:
+    """Single-column, single-row result — st.metric shown, no st.dataframe."""
+    data = {
+        "question": "How many customers do we have?",
+        "generated_sql": "SELECT COUNT(DISTINCT customer_id) AS customer_count FROM customers",
+        "query_result": [{"customer_count": 736}],
+        "columns": ["customer_count"],
+        "row_count": 1,
+        "error_message": None,
+        "session_history": ["How many customers do we have?"],
+    }
+
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+    at.text_input[0].set_value("How many customers do we have?")
+
+    with patch("httpx.post", return_value=_mock_response(data)):
+        at.button[0].click()
+        at.run()
+
+    assert len(at.metric) == 1
+    assert at.metric[0].value == "736"
+    assert len(at.dataframe) == 0
+
+
 # ---------------------------------------------------------------------------
 # Tests — spec: error-display
 # ---------------------------------------------------------------------------
