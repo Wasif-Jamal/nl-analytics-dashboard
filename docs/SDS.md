@@ -38,7 +38,10 @@ The system uses a **layered architecture** combined with a **LangGraph tool-call
 
 This separation improves maintainability, testability, scalability, and future extensibility.
 
-The Workflow Orchestration Layer is a LangChain `create_agent` **supervisor** that runs a ReAct loop over the capability **tools** exposed by the specialized agents (§6). It is not a fixed node pipeline: the supervisor decides which tools to call and in what order, calling `query_database` first and — once data is returned — emitting the visualization, insight, and follow-up tools together so the prebuilt `ToolNode` runs them in parallel (§7).
+The Workflow Orchestration Layer uses a **supervisor-over-subagents** pattern:
+
+- **Supervisor** — routes to agent subagents (SQL Agent first, then Visualization Agent, Insight Agent, and Follow-up Agent in parallel after the SQL Agent succeeds). The supervisor does not call atomic tools directly.
+- **Agent subagents** — every agent (`SqlAgent`, `VisualizationAgent`, `InsightAgent`, `FollowupAgent`) is a `create_agent()` instance with its own LLM, prompt, and internal tools. Internal tools are invisible to the supervisor; each agent's LLM drives its own tool-calling loop.
 
 ---
 
@@ -72,13 +75,13 @@ FastAPI (routes/)
   ↓
 Chat Service
   ↓
-create_agent Supervisor (ReAct loop)
+Supervisor
   ↓
-Agent Tools (query_database · generate_visualization · generate_insights · suggest_followups)
+Agent Subagents (SQL Agent · Visualization Agent · Insight Agent · Follow-Up Agent)
+  ↓                    ↓ (SQL Agent only, via POST /api/query)
+  ↓               Repositories → SQLite Database
   ↓
-Repositories
-  ↓
-SQLite Database
+WorkflowState (aggregated results)
 ```
 
 The Streamlit UI is a client of the FastAPI API; routes delegate to the Chat Service, which invokes the LangGraph workflow. See §9.3.
@@ -102,6 +105,7 @@ nl-analytics-dashboard/
 │   │
 │   ├── routes/
 │   │   ├── chat_routes.py
+│   │   ├── query_routes.py
 │   │   └── health.py
 │   │
 │   ├── config/
@@ -118,12 +122,13 @@ nl-analytics-dashboard/
 │   │
 │   ├── prompts/
 │   │   ├── sql_prompt.py
-│   │   ├── orchestrator_prompt.py   # supervisor prompt (visualization is deterministic — no prompt)
+│   │   ├── orchestrator_prompt.py   # supervisor prompt
+│   │   ├── visualization_prompt.py
 │   │   ├── insight_prompt.py
 │   │   └── followup_prompt.py
 │   │
 │   ├── orchestration/
-│   │   ├── graph.py               # AnalyticsGraph — assembles tools, returns create_agent(...)
+│   │   ├── graph.py               # AnalyticsGraph — builds supervisor that routes to agent subagents
 │   │   └── state.py               # WorkflowState (MessagesState subclass) + initial_state
 │   │
 │   ├── services/
@@ -180,31 +185,44 @@ nl-analytics-dashboard/
 
 ## 6. Multi-Agent Design
 
-The application uses specialized agents that each **expose a capability tool** (via `get_tools()`) to the `create_agent` supervisor (§2, §7). The supervisor sequences the tools; each tool does real work and returns a typed `Command` that updates the shared workflow state (§7.1). Tools read the prior result from state via `InjectedState`, so the supervisor never has to serialize the dataset back into a tool call.
+The application uses specialized agents that are each invoked as a **subagent** by the supervisor. Every agent is a `create_agent()` instance that manages its own internal tools and returns a typed `Command` updating the shared workflow state (§7.1). Internal tools read prior results from `WorkflowState` via `InjectedState`; the supervisor never serializes the dataset back into a subagent call.
 
-### 6.1 SQL Agent — `query_database` tool
-**Responsibilities:** understand database schema · generate SQL · correct invalid SQL · explain generated SQL.
-**Output:** SQL query · query explanation · query result (DataFrame, serialized into state).
-The SQL Agent keeps its **own LLM** and prompt. The tool generates SQL, validates it is read-only (§9 / `app/utils/validators.py`), executes it through the Repository, and **self-corrects** by feeding any validation or execution error back into a bounded retry loop. The SQL Agent is the **only** agent allowed to interact with the database.
+### 6.1 SQL Agent
+**Responsibilities:** understand database schema · generate SQL · validate SQL · execute SQL · correct invalid SQL · explain generated SQL.
+**Output:** `generated_sql`, `sql_explanation`, `query_result` written to `WorkflowState`.
 
-### 6.2 Visualization Agent — `generate_visualization` tool
+The SQL Agent is a `create_agent()` instance. Its internal tools are:
+
+| Tool | Responsibility |
+|---|---|
+| `generate_sql` | LLM call that produces `SQLGenerationOutput` (sql, explanation, is_identifiable). On retries, includes the previous SQL and error type as context. |
+| `validate_sql` | Validates SQL is read-only (`app/utils/validators.py`) — allows `SELECT` only; blocks `INSERT`/`UPDATE`/`DELETE`/`DROP`/`ALTER`/`TRUNCATE`. |
+| `execute_sql` | Calls `POST /api/query` via `httpx`. Returns rows as a `QueryResult`. On failure, signals an error type for retry. |
+
+The agent's internal LLM decides which tools to call and drives the generate → validate → execute → retry loop. The SQL Agent is the **only** agent allowed to interact with the database (via `execute_sql` → `POST /api/query` → `QueryRouter` → `QueryService` → `QueryRepository`).
+
+### 6.2 Visualization Agent
 **Responsibilities:** analyze query result structure · select visualization type · generate chart configuration.
 **Supported visualizations:** Bar Chart · Line Chart · Pie Chart · Scatter Plot · Table.
-Selection is **deterministic** (no LLM): the tool reads the result from state and applies the result-shape → chart-type rules (FRS §6.3) via `app/utils/chart_helpers.py`.
+The Visualization Agent is a `create_agent()` instance with its own LLM and internal tools. It reads `query_result` from `WorkflowState` via `InjectedState` and produces a `ChartConfig`.
 
-### 6.3 Insight Agent — `generate_insights` tool
+### 6.3 Insight Agent
 **Responsibilities:** analyze returned data · identify trends · identify outliers · generate actionable business insights.
-The Insight Agent runs its **own data-grounded LLM** call over the returned rows. All insights must be grounded in actual returned data. No fabricated values or unsupported conclusions are permitted.
+The Insight Agent is a `create_agent()` instance. Its LLM call is data-grounded: all insights must be derived from the actual rows in `query_result`. No fabricated values or unsupported conclusions are permitted.
 
-### 6.4 Follow-Up Agent — `suggest_followups` tool
+### 6.4 Follow-Up Agent
 **Responsibilities:** generate relevant follow-up questions · support exploratory analytics workflows.
-The Follow-Up Agent runs its **own LLM** call over the original question and the returned data.
+The Follow-Up Agent is a `create_agent()` instance whose LLM call operates over the original question and the returned data.
 
 ---
 
 ## 7. LangGraph Workflow
 
-The application uses a state-driven **tool-calling agent** built with LangChain's `create_agent`. `create_agent` compiles the agent node, the prebuilt `ToolNode`, and the routing condition internally — there are **no hand-written workflow nodes**. `AnalyticsGraph` (`app/orchestration/graph.py`) assembles the four capability tools (§6) and returns the compiled graph.
+The application uses two layers of LangGraph:
+
+**Supervisor layer:** `AnalyticsGraph` (`app/orchestration/graph.py`) builds the supervisor graph, which routes to the four agent subagents. The supervisor itself does not call atomic tools — only subagents.
+
+**Agent layer:** Every agent (`SqlAgent`, `VisualizationAgent`, `InsightAgent`, `FollowupAgent`) is a `create_agent()` instance built with its own LLM, internal tools, prompt, and private state schema. Internal tools are invisible to the supervisor; each agent decides which tools to call based on its own LLM.
 
 ### 7.1 Workflow State
 The state is a `MessagesState` subclass (`WorkflowState`), so the message history and its reducer come for free; the analytics fields are added on top:
@@ -223,19 +241,19 @@ Tools update these fields by returning a `Command`.
 
 `WorkflowState` is an **in-process execution state** and is not required to be JSON-serializable. `query_result` is stored as a `pd.DataFrame` — keeping it as a DataFrame avoids a serialize/deserialize round-trip and lets the downstream visualization, insight, and follow-up tools work directly against the native Pandas API for efficient analytics processing.
 
-### 7.2 Agent Loop & Tools
+### 7.2 Agent Subagents
 
-The supervisor runs the ReAct loop: **model → (tool calls?) → `ToolNode` → model → … → end**.
+The supervisor routes to agent subagents. Each subagent is a `create_agent()` instance that manages its own internal tools.
 
-| Tool (provider) | Input (from state / args) | Output / Responsibility |
+| Subagent | Input (from WorkflowState) | Output / Responsibility |
 |---|---|---|
-| `query_database` (SQL Agent) | User question | Generate SQL, validate read-only (`SELECT` only; blocks `INSERT`/`UPDATE`/`DELETE`/`DROP`/`ALTER`/`TRUNCATE`), execute, retry-correct on error → `Command{generated_sql, sql_explanation, query_result}` or an `error_message` |
-| `generate_visualization` (Visualization Agent) | `query_result` (InjectedState) | Deterministic chart config → `Command{chart_config}` |
-| `generate_insights` (Insight Agent) | `query_result` (InjectedState) | Data-grounded insights → `Command{insights}` |
-| `suggest_followups` (Follow-Up Agent) | `question` + `query_result` (InjectedState) | Suggested follow-up questions → `Command{followup_questions}` |
+| SQL Agent (§6.1) | User question | Internal tools: `generate_sql` → `validate_sql` → `execute_sql` (POST /api/query → SQLite) → conditional retry. Returns `Command{generated_sql, sql_explanation, query_result}` or sets `error_message`. |
+| Visualization Agent (§6.2) | `query_result` (InjectedState) | LLM-driven chart config → `Command{chart_config}` |
+| Insight Agent (§6.3) | `query_result` (InjectedState) | Data-grounded insights → `Command{insights}` |
+| Follow-Up Agent (§6.4) | `question` + `query_result` (InjectedState) | Suggested follow-up questions → `Command{followup_questions}` |
 
 ### 7.3 Parallel Analytics
-There is no dedicated Response node. After `query_database` succeeds, the supervisor emits `generate_visualization`, `generate_insights`, and `suggest_followups` **in a single turn**; the prebuilt `ToolNode` executes those tool calls **in parallel** and their `Command` updates merge into state. The Chat Service reads the final aggregated state and returns it to the API layer, which serves the Streamlit UI.
+There is no dedicated Response node. After the SQL Agent succeeds, the supervisor invokes the Visualization Agent, Insight Agent, and Follow-Up Agent **in parallel**; their `Command` updates merge into state. The Chat Service reads the final aggregated state and returns it to the API layer, which serves the Streamlit UI.
 
 ---
 
@@ -267,7 +285,7 @@ The domain services (`sql_service`, `visualization_service`, `insight_service`, 
 ### 9.3 API Layer & Chat Service
 The backend is exposed over HTTP with **FastAPI**; the Streamlit UI (`website/app.py`) is a client of this API and does not invoke the workflow in-process.
 
-- **FastAPI routes (`app/routes/`)** — define HTTP endpoints (submit a question, return the analytics response, health check); validate payloads with the `app/schemas/` models (`requests`, `responses`); contain no business logic and delegate to the Chat Service. The ASGI app is assembled in `app/main.py` (served via Uvicorn: `uv run uvicorn app.main:app`).
+- **FastAPI routes (`app/routes/`)** — define HTTP endpoints (submit a question, execute SQL, return the analytics response, health check); validate payloads with the `app/schemas/` models (`requests`, `responses`); contain no business logic and delegate to services. The ASGI app is assembled in `app/main.py` (served via Uvicorn: `uv run uvicorn app.main:app`). `query_routes.py` exposes `POST /api/query` which the SQL Agent calls via `httpx` to execute validated SQL (§6.1).
 - **Chat Service (`app/services/chat_service.py`)** — the application entry point the routes call; it bridges the API layer and the LangGraph workflow by invoking the graph with the user question and returning the aggregated response. It is the **single sanctioned component that runs the workflow**; the domain services (§9.2) stay LangGraph-independent.
 
 ---
@@ -330,17 +348,17 @@ Mapping each `FRS.md` requirement to the design element that satisfies it.
 | FRS Requirement | Design Element(s) |
 |---|---|
 | FR-1 — submit NL questions | Streamlit UI (`website/app.py`) → FastAPI route (`app/routes/`) → Chat Service (§9.3); workflow `question` state |
-| FR-2 — generate SQL | SQL Agent (§6.1) via the `query_database` tool (§7.2) |
-| FR-3 — validate SQL before execution | `query_database` tool validates read-only before executing; `app/utils/validators.py` |
-| FR-4 — execute valid SQL | `query_database` tool (§7.2); Repository Layer (§9.1) |
+| FR-2 — generate SQL | SQL Agent (§6.1) `generate_sql` internal tool (§7.2) |
+| FR-3 — validate SQL before execution | SQL Agent `validate_sql` internal tool + `QueryRouter.execute_query` both call `app/utils/validators.py` (defense-in-depth) |
+| FR-4 — execute valid SQL | SQL Agent `execute_sql` internal tool calls `POST /api/query`; `QueryRouter` → `QueryService` → `QueryRepository` (§9.1) |
 | FR-5 — display data in table | Streamlit results table (`website/`); `query_result` state |
-| FR-6 — select presentation by result shape | Visualization Agent (§6.2) via the `generate_visualization` tool (§7.2) |
+| FR-6 — select presentation by result shape | Visualization Agent (§6.2) subagent (§7.2) |
 | FR-7 — render charts | Visualization Agent + Plotly; `chart_config` state; `app/utils/chart_helpers.py` |
 | FR-8 — single-value plain-language answer | Visualization Agent written-answer path (single 1×1 result → sentence) |
-| FR-9 — actionable insights grounded in data | Insight Agent (§6.3) via the `generate_insights` tool (§7.2) |
-| FR-10 — suggested follow-up questions | Follow-Up Agent (§6.4) via the `suggest_followups` tool (§7.2) |
+| FR-9 — actionable insights grounded in data | Insight Agent (§6.3) subagent (§7.2) |
+| FR-10 — suggested follow-up questions | Follow-Up Agent (§6.4) subagent (§7.2) |
 | FR-11 — session query history | Streamlit UI generates a UUID4 `session_uuid` on first load (`st.session_state`) and includes it in every API request; `app/services/chat_service.py` holds an in-memory `dict[session_uuid → list[question]]` and appends each successfully answered question; history is never written to the database; response payload includes the session history list for the UI to render |
 | FR-12 — export results as CSV | Streamlit download action (`website/`) over query result DataFrame |
 | API transport (all FRs) | FastAPI routes (`app/routes/`) + Chat Service (`app/services/chat_service.py`) (§9.3) |
-| Validation (FRS §9) — block non-read-only SQL | `query_database` tool + `app/utils/validators.py`; allows `SELECT` only |
-| Error handling (FRS §10) | Workflow `error_message` state set inside the tools; `create_agent` ReAct loop ends when no further tool calls; surfaced via API + UI |
+| Validation (FRS §9) — block non-read-only SQL | SQL Agent `validate_sql` internal tool + `app/utils/validators.py`; allows `SELECT` only |
+| Error handling (FRS §10) | Workflow `error_message` state set inside subagents; supervisor stops invoking further subagents on error; surfaced via API + UI |

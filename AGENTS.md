@@ -21,11 +21,11 @@ Single **uv** project — **not** a monorepo, so there is no `/packages/shared`.
 | `app/starter.py` | App bootstrap (inside `app/`) |
 | `app/` | **Complete backend** (single package) |
 | `app/main.py` | FastAPI ASGI entry — `uv run uvicorn app.main:app` |
-| `app/routes/` | FastAPI routers: `chat_routes`, `health` — HTTP endpoints; no business logic |
+| `app/routes/` | FastAPI routers: `chat_routes`, `query_routes`, `health` — HTTP endpoints; no business logic |
 | `app/config/` | `env_config`, `db_config`, `log_config`, `llm_config` |
-| `app/agents/` | `sql_agent`, `visualization_agent`, `insight_agent`, `followup_agent` — each exposes a capability tool via `get_tools()` |
-| `app/prompts/` | Prompt modules: `sql_prompt`, `orchestrator_prompt`, `insight_prompt`, `followup_prompt` (visualization is deterministic — no prompt). Text never hardcoded in agents |
-| `app/orchestration/` | `graph` (`AnalyticsGraph` → `create_agent` supervisor over the agent tools) and `state` (`WorkflowState`). No hand-written nodes or conditional edges — `create_agent` builds the agent node, `ToolNode`, and routing internally |
+| `app/agents/` | `sql_agent`, `visualization_agent`, `insight_agent`, `followup_agent` — each is invoked as a **subagent** by the supervisor. Every agent is a `create_agent()` instance that decides which of its own internal tools to call |
+| `app/prompts/` | Prompt modules: `sql_prompt`, `orchestrator_prompt`, `visualization_prompt`, `insight_prompt`, `followup_prompt`. Text never hardcoded in agents |
+| `app/orchestration/` | `graph` (`AnalyticsGraph`) and `state` (`WorkflowState`). `AnalyticsGraph` builds the supervisor, which routes to agent subagents. All agents are `create_agent()` instances — their internal tools are invisible to the supervisor |
 | `app/services/` | Business logic: `chat` (API↔workflow bridge), `analytics`, `sql`, `visualization`, `insight`, `followup` |
 | `app/repositories/` | `query_repository` — SQL execution + SQLAlchemy sessions only |
 | `app/models/` | SQLAlchemy models: `base`, `customer`, `product`, `order`, `order_item` |
@@ -73,20 +73,32 @@ uv run pytest                        # run the test suite
 
 ## 5. Architecture Patterns
 
-Layered architecture + a LangGraph `create_agent` tool-calling agent:
+Layered architecture + a LangGraph supervisor that routes to agent subagraphs:
 
 ```
-User → Streamlit UI (website/) → FastAPI (app/routes/) → Chat Service → create_agent supervisor
-      → agent tools (query_database, generate_visualization, generate_insights, suggest_followups)
-      → Repository → SQLite
+User → Streamlit UI (website/) → POST /api/chat
+                                       │
+                                  FastAPI routes → Chat Service → supervisor
+                                                                       │
+                                              ┌────────────────────────┤
+                                              ▼                         │  [after SQL Agent, in parallel]
+                                         SQL Agent               Visualization Agent
+                                         (subagent)              Insight Agent
+                                          ├─ generate_sql         Follow-up Agent
+                                          ├─ validate_sql
+                                          └─ execute_sql
+                                                 └─▶ POST /api/query
+                                                      └─ QueryRouter → QueryService
+                                                         → QueryRepository → SQLite
 ```
 
 Boundary rules (enforce these):
-- **Routes** (`app/routes/`) expose HTTP endpoints and contain no business logic — they delegate to the **Chat Service** (`app/services/chat_service.py`), the single component that invokes the workflow (the compiled `create_agent` graph).
-- **Agents** each expose a capability **tool** via `get_tools()`; the supervisor sequences the tools and never performs analysis itself. Tools read prior results from state via `InjectedState` and return a typed `Command`.
+- **Routes** (`app/routes/`) expose HTTP endpoints and contain no business logic — they delegate to the **Chat Service** (`app/services/chat_service.py`), the single component that invokes the workflow. The `query_routes` module exposes `POST /api/query`; the SQL agent calls this endpoint to execute SQL.
+- **Supervisor** invokes agents as **subagents** (SQL Agent, Visualization Agent, Insight Agent, Follow-up Agent); it does not call atomic tools directly — only subagents.
+- **Every agent is a `create_agent()` instance** that manages its own internal tools. The SQL Agent's internal tools are `generate_sql`, `validate_sql`, and `execute_sql` (which calls `POST /api/query`). Each analysis agent (Visualization, Insight, Follow-up) manages its own set of internal tools independently.
 - **Repositories** only execute SQL / manage sessions / return results — **no business logic**.
-- The **SQL Agent is the only component allowed to touch the database** (through its `query_database` tool).
-- Agents own their prompts (in `app/prompts/`) and never hardcode prompt text. (Visualization is deterministic and has no prompt.)
+- The **SQL Agent is the only component allowed to touch the database** (via its `execute_sql` tool → `POST /api/query` → QueryRouter → QueryRepository).
+- Agents own their prompts (in `app/prompts/`) and never hardcode prompt text.
 
 ---
 
@@ -96,16 +108,30 @@ Boundary rules (enforce these):
 
 **Workflow state fields:** `WorkflowState` subclasses `MessagesState` (so `messages` + its reducer come for free) and adds: `question`, `generated_sql`, `sql_explanation`, `query_result`, `chart_config`, `insights`, `followup_questions`, `error_message`.
 
-**Agent loop (no fixed node pipeline):**
+**Agent loop:**
 ```
-supervisor (create_agent) ── query_database ──▶ data in state
-        │                                            │
-        └── then, emitted in ONE turn (run in parallel by ToolNode):
-                 generate_visualization + generate_insights + suggest_followups
-        │
-        └── no more tool calls ─▶ end; Chat Service reads final state
+supervisor ──▶ SQL Agent (subagent / create_agent)
+                     SQL Agent's tools: generate_sql · validate_sql · execute_sql
+                                                                │
+                                                       POST /api/query → SQLite
+               │
+               [after SQL Agent, in parallel]
+               ├──▶ Visualization Agent (subagent / create_agent)
+               ├──▶ Insight Agent (subagent / create_agent)
+               └──▶ Follow-up Agent (subagent / create_agent)
+               │
+               no further subagents ─▶ END; Chat Service reads final state
 ```
-After `query_database` succeeds the supervisor calls the three analysis tools together; `ToolNode` runs them in parallel and merges their `Command` updates into state. If `query_database` reports it could not answer, the supervisor stops without calling the analysis tools.
+After the SQL Agent succeeds the supervisor invokes the three analysis subagents together (in parallel). If the SQL Agent reports it could not answer, the supervisor stops without invoking the analysis subagents.
+
+**Agent pattern** (all agents):
+
+Every agent class is a `create_agent()` instance built in `__init__`:
+1. `__init__`: stores injected deps (LLM, config); builds internal tools; calls `create_agent(model, tools=[...], system_prompt=..., state_schema=XAgentState)` to produce `self._agent`.
+2. Internal tools are `@tool`-decorated methods or closures on the agent class — invisible to the supervisor.
+3. The compiled agent is invoked by the supervisor as a subagent; it returns a `WorkflowState Command` with its results.
+
+Each agent uses its own private `XAgentState` (a `TypedDict` or `MessagesState` subclass) — separate from the supervisor's `WorkflowState`.
 
 **Agent communication:** agent **outputs** are structured **Pydantic schemas** written to typed state fields via `Command` (`SQLGenerationOutput`, `ChartConfig`, `InsightOutput`, `FollowupOutput`) — never unstructured data between agents. The supervisor drives the loop over the messages channel; `ToolMessage`s are brief control summaries, not inter-agent data.
 
@@ -137,7 +163,7 @@ On startup the bootstrap (`app/starter.py` → `create_app`) creates the tables 
 ## 9. Security & Validation
 
 - **Authentication / authorization: out of scope** (FRS §13). Do not build login, sessions, roles, or RBAC.
-- **Read-only enforcement:** the `query_database` tool validates SQL via `app/utils/validators.py` — allows `SELECT` only and **blocks** `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `TRUNCATE`.
+- **Read-only enforcement:** the SQL Agent's `validate_sql` internal tool calls `app/utils/validators.py` — allows `SELECT` only and **blocks** `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `TRUNCATE`. Defense-in-depth: `QueryRouter.execute_query` also validates before executing.
 - The SQL Agent is the sole database interface.
 - **Standard error responses:** invalid question → `Unable to identify requested entities.`; invalid SQL → `Generated query could not be validated.`; empty result → `No data found for the requested query.`; DB error → `Unable to retrieve data at this time.`
 
@@ -155,7 +181,7 @@ Framework: pytest, run with `uv run pytest`. Tests live under `tests/`:
 ## 11. Do NOT Do
 
 - ❌ Fabricate insights, figures, or claims not supported by the returned data (FR-9; core product rule).
-- ❌ Generate or execute non-`SELECT` SQL, or bypass the read-only validation (`app/utils/validators.py`) in the `query_database` tool.
+- ❌ Generate or execute non-`SELECT` SQL, or bypass the read-only validation (`app/utils/validators.py`) in the SQL Agent's `validate_sql` tool.
 - ❌ Let any component other than the SQL Agent touch the database.
 - ❌ Hardcode prompt text inside agents — use `app/prompts/`.
 - ❌ Put business logic in repositories, or import LangGraph into domain services (the Chat Service is the only service that runs the workflow).
