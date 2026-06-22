@@ -1,8 +1,9 @@
 """Tests for app.orchestration.graph.AnalyticsGraph.
 
 Covers the workflow-state and database-access-boundary requirements at the graph
-level: the supervisor compiles with the WorkflowState schema and exposes exactly
-the query_database tool. Built offline with a dummy API key (no network).
+level: the graph compiles with the WorkflowState schema and routes directly to
+the ``sql_agent`` subgraph node (plain ``StateGraph``, no supervisor LLM node).
+Built offline with a dummy API key (no network).
 """
 
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -17,14 +18,16 @@ def _build():
 
 
 def test_build_returns_compiled_graph():
-    """build() returns a compiled supervisor graph."""
+    """build() returns a CompiledStateGraph with exactly sql_agent as its node."""
     graph = _build()
     assert isinstance(graph, CompiledStateGraph)
-    assert {"model", "tools"} <= set(graph.nodes)
+    assert set(graph.nodes) == {"__start__", "sql_agent"}
 
 
-def test_query_database_is_registered():
-    """The compiled ToolNode exposes exactly the query_database tool."""
+def test_sql_agent_is_registered_as_subgraph():
+    """The outer graph's sql_agent node wraps a compiled create_agent subgraph."""
     graph = _build()
-    tool_names = set(graph.nodes["tools"].bound.tools_by_name)
-    assert "query_database" in tool_names
+    # graph.nodes returns PregelNode wrappers; the compiled subgraph is inside .subgraphs
+    pregel_node = graph.nodes["sql_agent"]
+    assert len(pregel_node.subgraphs) == 1
+    assert isinstance(pregel_node.subgraphs[0], CompiledStateGraph)
