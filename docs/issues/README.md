@@ -9,7 +9,7 @@ All issues follow the supervisor-over-subagents architecture documented in `docs
 | 1 | [SQL Pipeline (WorkflowState + AnalyticsGraph + SqlAgent)](01-sql-pipeline.md) | §6.1, §6.2; FR-1–4 | `area:sql` |
 | 2 | [API Layer (FastAPI routes & Chat Service)](02-api-layer-fastapi.md) | SDS §9.3; tech-arch §15 | `area:api` |
 | 3 | [Streamlit UI](03-streamlit-ui.md) | §6.1, §6.6, §11; FR-1, FR-5 | `area:ui` |
-| 4 | [SQL Agent Subgraph Refactor](04-sql-agent-subgraph.md) | SDS §6.1; tech-arch §17 | `area:sql` |
+| 4 | [SQL Agent Subagent Refactor](04-sql-agent-subagent.md) | SDS §6.1; tech-arch §17 | `area:sql` |
 | 5 | [Results Table & CSV Export](05-results-table-csv-export.md) | §6.6, §11; FR-5, FR-12 | `area:ui` |
 | 6 | [Result Presentation: Charts & Single-Value Answer](06-result-presentation-charts.md) | §6.3, §11; FR-6, FR-7, FR-8 | `area:viz` |
 | 7 | [Insights Generation](07-insights-generation.md) | §6.4; FR-9 | `area:insights` |
