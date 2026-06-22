@@ -14,12 +14,12 @@ from langgraph.graph.state import CompiledStateGraph
 
 from app.agents.sql_agent import SqlAgent
 from app.config.env_config import settings
-from app.config.log_config import get_logger
+from app.config.log_config import config as log_config
 from app.orchestration.state import WorkflowState
 from app.prompts.orchestrator_prompt import ORCHESTRATOR_PROMPT
 from app.services.sql_service import QueryService
 
-logger = get_logger(__name__)
+logger = log_config.get_logger(__name__)
 
 
 class AnalyticsGraph:

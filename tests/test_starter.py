@@ -14,7 +14,7 @@ def test_create_app_builds_graph_once_and_registers_routers() -> None:
     """Spec: startup-singleton / server-starts — graph built once, both routes registered."""
     with (
         patch("app.starter.DatabaseInitializer"),
-        patch("app.starter.get_llm"),
+        patch("app.starter.llm_config"),
         patch("app.starter.QueryService"),
         patch("app.starter.AnalyticsGraph") as mock_ag,
     ):

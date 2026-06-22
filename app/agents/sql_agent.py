@@ -21,14 +21,14 @@ from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 
 from app.config.env_config import settings
-from app.config.log_config import get_logger
+from app.config.log_config import config as log_config
 from app.orchestration.state import WorkflowState
 from app.prompts.sql_prompt import SQL_SYSTEM_PROMPT
 from app.schemas.sql_result import QueryResult, SQLGenerationOutput
 from app.services.sql_service import QueryService
 from app.utils.validators import validate_select_only
 
-logger = get_logger(__name__)
+logger = log_config.get_logger(__name__)
 
 # Standard user-facing error messages (FRS §10 / AGENTS.md §9).
 _ERR_UNIDENTIFIED = "Unable to identify requested entities."

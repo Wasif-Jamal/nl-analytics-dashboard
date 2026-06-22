@@ -8,8 +8,8 @@ singletons, registers the API routers, and returns the configured app.
 
 from fastapi import FastAPI
 
-from app.config.llm_config import get_llm
-from app.config.log_config import get_logger
+from app.config.llm_config import config as llm_config
+from app.config.log_config import config as log_config
 from app.orchestration.graph import AnalyticsGraph
 from app.routes.chat_routes import ChatRouter
 from app.routes.health import router as health_router
@@ -17,7 +17,7 @@ from app.services.chat_service import ChatService
 from app.services.sql_service import QueryService
 from app.utils.database_initializer import DatabaseInitializer
 
-logger = get_logger(__name__)
+logger = log_config.get_logger(__name__)
 
 
 def create_app() -> FastAPI:
@@ -38,7 +38,7 @@ def create_app() -> FastAPI:
     app = FastAPI(title="Natural Language Analytics Dashboard API")
 
     logger.info("Initializing LLM")
-    llm = get_llm()
+    llm = llm_config.get_llm()
     logger.info("Creating QueryService")
     query_service = QueryService()
     logger.info("Building analytics supervisor graph")

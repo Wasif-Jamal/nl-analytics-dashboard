@@ -10,12 +10,12 @@ import pandas as pd
 from sqlalchemy import Engine, select
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.config.db_config import engine
+from app.config.db_config import config as db_config
 from app.config.env_config import settings
-from app.config.log_config import get_logger
+from app.config.log_config import config as log_config
 from app.models import Base, Customer, Order, OrderItem, Product
 
-logger = get_logger(__name__)
+logger = log_config.get_logger(__name__)
 
 # CSV column -> model field, per normalized table.
 _CUSTOMER_COLS = {
@@ -55,7 +55,9 @@ _ORDER_ITEM_COLS = {
 class DatabaseInitializer:
     """Creates the schema and loads the source CSV once, if the DB is empty."""
 
-    def __init__(self, db_engine: Engine = engine, csv_path: str | None = None) -> None:
+    def __init__(
+        self, db_engine: Engine = db_config.engine, csv_path: str | None = None
+    ) -> None:
         """Configure the initializer.
 
         Args:
