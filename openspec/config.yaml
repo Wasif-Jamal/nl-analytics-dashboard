@@ -15,18 +15,23 @@ context: |
 
   Layout: backend lives under app/ (entry app/main.py); UI under website/ (entry website/app.py).
 
-  Architecture constraints (docs/SDS.md §2,6-9; docs/decisions/technical_architecture.md §16; docs/FRS.md §9,13,14):
-  - Layered + LangGraph create_agent tool-calling agent: User -> Streamlit (website/) ->
-    FastAPI (app/routes/) -> Chat Service -> create_agent supervisor -> agent tools
-    (query_database, generate_visualization, generate_insights, suggest_followups) -> Repository -> SQLite.
-  - create_agent builds the agent node, ToolNode, and routing internally — no hand-written nodes
-    or conditional edges. AnalyticsGraph (app/orchestration/graph.py) assembles the tools.
-  - Each agent exposes a capability tool via get_tools(); tools read prior results from state via
-    InjectedState and return a typed Command. WorkflowState subclasses MessagesState.
+  Architecture constraints (docs/SDS.md §2,6-9; docs/decisions/technical_architecture.md §17; docs/FRS.md §9,13,14):
+  - Supervisor-over-subagents pattern: User -> Streamlit (website/) ->
+    FastAPI (app/routes/) -> Chat Service -> supervisor -> agent subagents
+    (SqlAgent, VisualizationAgent, InsightAgent, FollowupAgent) -> Repository -> SQLite.
+  - Every agent is a create_agent() instance with its own LLM, prompt, and internal tools.
+    Internal tools are invisible to the supervisor; the supervisor invokes each agent as a subagent.
+    AnalyticsGraph (app/orchestration/graph.py) builds the supervisor and wires in the subagents.
+  - SQL Agent internal tools: generate_sql, validate_sql, execute_sql (calls POST /api/query).
+    Analysis agents (Visualization, Insight, Followup) run in parallel after SQL Agent succeeds.
+  - Agent outputs are typed Pydantic schemas written to WorkflowState via Command
+    (SQLGenerationOutput, ChartConfig, InsightOutput, FollowupOutput) — never unstructured data.
+    WorkflowState subclasses MessagesState; tools read prior results via InjectedState.
   - FastAPI routes hold no business logic; they delegate to the Chat Service
     (app/services/chat_service.py), the only component that runs the workflow (the compiled graph).
-  - The SQL Agent is the ONLY component allowed to touch the database (via its query_database tool);
-    it keeps its own LLM and self-corrects invalid SQL through a bounded retry loop.
+  - The SQL Agent is the ONLY component allowed to touch the database (via its execute_sql tool
+    → POST /api/query → QueryRouter → QueryRepository); it self-corrects invalid SQL through
+    its own LLM-driven ReAct loop.
   - Repositories hold no business logic. Agent outputs are typed Pydantic schemas written to state
     via Command (SQLGenerationOutput, ChartConfig, InsightOutput, FollowupOutput) — never unstructured data.
   - Read-only SQL only: SELECT allowed; INSERT/UPDATE/DELETE/DROP/ALTER/TRUNCATE blocked.
