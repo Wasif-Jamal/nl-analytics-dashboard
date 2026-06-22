@@ -2,7 +2,7 @@
 
 ## 1. Architecture Overview
 
-The Natural Language Analytics Dashboard shall use a layered architecture combined with a LangGraph `create_agent` tool-calling agent (a supervisor that sequences capability tools provided by the specialized agents; see §5–6 and the ADR in §16).
+The Natural Language Analytics Dashboard shall use a layered architecture combined with a LangGraph supervisor that routes to specialized **agent subagents** (see §5–6 and the ADR in §16). Every agent is a `create_agent()` instance that manages its own internal tools; the supervisor invokes agents as whole units, not atomic tools.
 
 The architecture separates:
 
@@ -80,9 +80,9 @@ create_agent Supervisor (ReAct loop)
 
 ↓
 
-Agent Tools (query_database · generate_visualization · generate_insights · suggest_followups)
+Agent Subagents (SQL Agent · Visualization Agent · Insight Agent · Follow-Up Agent)
 
-↓
+↓ (SQL Agent only, via POST /api/query)
 
 Repositories
 
@@ -125,12 +125,13 @@ nl-analytics-dashboard/
 │   │
 │   ├── prompts/
 │   │   ├── sql_prompt.py
-│   │   ├── orchestrator_prompt.py   # supervisor prompt (visualization is deterministic — no prompt)
+│   │   ├── orchestrator_prompt.py   # supervisor prompt
+│   │   ├── visualization_prompt.py
 │   │   ├── insight_prompt.py
 │   │   └── followup_prompt.py
 │   │
 │   ├── orchestration/
-│   │   ├── graph.py               # AnalyticsGraph — assembles tools, returns create_agent(...)
+│   │   ├── graph.py               # AnalyticsGraph — builds supervisor that routes to agent subagents
 │   │   └── state.py               # WorkflowState (MessagesState subclass) + initial_state
 │   │
 │   ├── services/
@@ -185,34 +186,31 @@ nl-analytics-dashboard/
 
 # 5. Multi-Agent Architecture
 
-The application shall use specialized agents, each of which **exposes a capability tool** (via `get_tools()`) to the `create_agent` supervisor. The supervisor sequences the tools; each tool returns a typed `Command` that updates the workflow state and reads any prior result from state via `InjectedState`.
+The application shall use specialized agents, each invoked as a **subagent** by the supervisor. Every agent is a `create_agent()` instance with its own LLM, prompt, and internal tools. The supervisor does not call atomic tools directly — only subagents.
 
-## SQL Agent — `query_database` tool
+## SQL Agent
 
 Responsibilities:
 
 * Understand database schema
-* Generate SQL (keeps its own LLM and prompt)
-* Validate the SQL is read-only, then execute it through the Repository
-* Correct invalid SQL by feeding validation/execution errors back into a bounded retry loop
+* Generate SQL (internal `generate_sql` tool)
+* Validate SQL is read-only (internal `validate_sql` tool)
+* Execute SQL via `POST /api/query` (internal `execute_sql` tool)
+* Correct invalid SQL through a bounded retry loop driven by the agent's own LLM
 * Explain generated SQL
 
-Output:
+Output: `generated_sql`, `sql_explanation`, `query_result` written to `WorkflowState`.
 
-* SQL query
-* Query explanation
-* Query result (DataFrame, serialized into state)
-
-The SQL Agent is the only agent allowed to interact with the database.
+The SQL Agent is the only agent allowed to interact with the database (via `execute_sql` → `POST /api/query` → `QueryRouter` → `QueryRepository`).
 
 ---
 
-## Visualization Agent — `generate_visualization` tool
+## Visualization Agent
 
 Responsibilities:
 
-* Analyze query result structure (read from state)
-* Select visualization type **deterministically** (result-shape → chart-type rules, FRS §6.3; no LLM)
+* Analyze query result structure (reads `query_result` from `WorkflowState`)
+* Select visualization type using its own LLM and internal tools
 * Generate chart configuration
 
 Supported visualizations:
@@ -225,33 +223,31 @@ Supported visualizations:
 
 ---
 
-## Insight Agent — `generate_insights` tool
+## Insight Agent
 
 Responsibilities:
 
-* Analyze returned data (own data-grounded LLM call)
+* Analyze returned data using its own data-grounded LLM and internal tools
 * Identify trends
 * Identify outliers
 * Generate actionable business insights
 
-All insights must be grounded in actual returned data.
-
-No fabricated values or unsupported conclusions are permitted.
+All insights must be grounded in actual returned data. No fabricated values or unsupported conclusions are permitted.
 
 ---
 
-## Follow-Up Agent — `suggest_followups` tool
+## Follow-Up Agent
 
 Responsibilities:
 
-* Generate relevant follow-up questions (own LLM call over the question + returned data)
+* Generate relevant follow-up questions using its own LLM and internal tools (operates over question + returned data)
 * Support exploratory analytics workflows
 
 ---
 
 # 6. LangGraph Workflow
 
-The application shall use a state-driven **tool-calling agent** built with `create_agent`, which compiles the agent node, the prebuilt `ToolNode`, and the routing condition internally. There are **no hand-written workflow nodes**. `AnalyticsGraph` (`app/orchestration/graph.py`) assembles the four agent tools and returns the compiled graph.
+The application uses a LangGraph supervisor that routes to agent subagents. `AnalyticsGraph` (`app/orchestration/graph.py`) builds the supervisor graph. Every agent is a `create_agent()` instance; agents are invoked as subagents, not individual tools.
 
 ## Workflow State
 
@@ -272,13 +268,13 @@ Tools update these fields by returning a `Command`.
 
 ## Agent Loop
 
-The supervisor runs the ReAct loop **model → (tool calls?) → `ToolNode` → model → … → end**:
+The supervisor routes to agent subagents in sequence:
 
-1. **`query_database`** — generate SQL, validate read-only (allows `SELECT`; blocks `INSERT`, `UPDATE`, `DELETE`, `DROP`, `ALTER`, `TRUNCATE`), execute, and retry-correct on error. Sets `generated_sql` / `sql_explanation` / `query_result`, or an `error_message`.
-2. If the query succeeds, the supervisor emits **`generate_visualization`**, **`generate_insights`**, and **`suggest_followups`** in a single turn; `ToolNode` runs them **in parallel** and merges their `Command` updates into state.
-3. When the supervisor has no further tool calls, the loop ends. The Chat Service reads the final aggregated state and returns it to the API layer, which serves the Streamlit UI.
+1. **SQL Agent** — internal tools `generate_sql` → `validate_sql` → `execute_sql` (→ `POST /api/query` → SQLite) with a bounded retry loop driven by the agent's own LLM. Sets `generated_sql` / `sql_explanation` / `query_result`, or an `error_message`.
+2. If the SQL Agent succeeds, the supervisor invokes **Visualization Agent**, **Insight Agent**, and **Follow-Up Agent** in parallel; their `Command` updates merge into state.
+3. When the supervisor has no further subagents to invoke, it ends. The Chat Service reads the final aggregated state and returns it to the API layer, which serves the Streamlit UI.
 
-If `query_database` reports it could not answer (unidentifiable question, empty result, or DB error), the supervisor stops without calling the analysis tools.
+If the SQL Agent reports it could not answer (unidentifiable question, empty result, or DB error), the supervisor stops without invoking the analysis subagents.
 
 ---
 
@@ -453,16 +449,16 @@ The domain services (`sql_service`, `visualization_service`, `insight_service`, 
 ## Request Flow
 
 ```text
-User → Streamlit UI → FastAPI (routes/) → Chat Service → create_agent supervisor
-     → agent tools (query_database · generate_visualization · generate_insights · suggest_followups)
-     → Repositories → SQLite
+User → Streamlit UI → FastAPI (routes/) → Chat Service → supervisor
+     → agent subagents (SQL Agent · Visualization Agent · Insight Agent · Follow-Up Agent)
+     → SQL Agent only: POST /api/query → Repositories → SQLite
 ```
 
 ---
 
 # 16. ADR — Pivot to a tool-calling agent (2026-06-18)
 
-**Status:** Accepted.
+**Status:** Superseded by ADR-2 below.
 
 **Context.** The original design (§5–6 as first written) specified a hand-wired seven-node LangGraph pipeline (SQL generation → validation → execution → parallel visualization/insight/follow-up → response). LangChain 1.x ships `create_agent`, a supervisor harness that builds the agent node, the prebuilt `ToolNode`, and the routing condition for us, and runs a ReAct loop over tools.
 
@@ -479,3 +475,26 @@ State is a `MessagesState` subclass; tools return `Command` updates.
 * Parallel analytics is preserved: the supervisor emits the three analysis tools in one turn and `ToolNode` runs them in parallel.
 * SQL self-correction is a natural product of the loop.
 * Functional behavior (FR-1…FR-12), the read-only rule (FRS §9), and the standard error messages (FRS §10) are unchanged — this is a "how", not a "what".
+
+---
+
+# 17. ADR-2 — Pivot to supervisor-over-subagents (2026-06-22)
+
+**Status:** Accepted.
+
+**Context.** ADR-1 (§16) introduced a flat `create_agent` supervisor with four atomic tools (`query_database`, `generate_visualization`, `generate_insights`, `suggest_followups`). Two problems emerged: (1) the SQL Agent's retry logic was hidden inside a nested inner `create_agent`, creating two invisible ReAct loops with no observable nodes; (2) all agents except SQL Agent had no LLM of their own — the Visualization Agent was deterministic, which limited its adaptability.
+
+**Decision.** Pivot to a **supervisor-over-subagents** architecture:
+
+* Every agent (`SqlAgent`, `VisualizationAgent`, `InsightAgent`, `FollowupAgent`) is a `create_agent()` instance with its own LLM, prompt, and internal tools. The supervisor does not call atomic tools directly.
+* The SQL Agent's internal tools are `generate_sql`, `validate_sql`, and `execute_sql` (which calls `POST /api/query`). The agent's own LLM drives the generate → validate → execute → retry loop.
+* The Visualization Agent is promoted from a deterministic function to a full `create_agent()` instance with its own LLM and internal tools — no longer hard-coded chart-type rules.
+* Each analysis agent (Visualization, Insight, Follow-up) is invoked in parallel by the supervisor after the SQL Agent succeeds.
+* SQL execution is decoupled via HTTP: `execute_sql` calls `POST /api/query` (a FastAPI endpoint backed by `QueryService`), eliminating direct agent → repository coupling.
+
+**Consequences.**
+* Each agent's logic is explicit, testable, and independently evolvable.
+* Visualization Agent gains LLM-driven adaptability — chart selection is no longer purely rule-based.
+* SQL retry logic is visible (named tools, observable in traces) rather than a hidden inner loop.
+* The `POST /api/query` endpoint introduces one HTTP hop for SQL execution but enables clean separation between the agent layer and the data layer.
+* Functional behavior (FR-1…FR-12), the read-only rule (FRS §9), and the standard error messages (FRS §10) are unchanged.

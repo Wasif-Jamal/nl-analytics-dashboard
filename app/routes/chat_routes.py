@@ -8,12 +8,12 @@ The router is instantiated with a ``ChatService`` dependency in
 
 from fastapi import APIRouter
 
-from app.config.log_config import get_logger
+from app.config.log_config import config as log_config
 from app.schemas.requests import AnalyticsRequest
 from app.schemas.responses import AnalyticsResponse
 from app.services.chat_service import ChatService
 
-logger = get_logger(__name__)
+logger = log_config.get_logger(__name__)
 
 
 class ChatRouter:

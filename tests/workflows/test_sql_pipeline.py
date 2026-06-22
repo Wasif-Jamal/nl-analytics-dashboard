@@ -1,15 +1,20 @@
 """Integration tests for the SQL pipeline against a real SQLite database.
 
-These exercise the *real* validation → QueryService → QueryRepository → SQLite
-path using the ``initialized_engine`` fixture. Only the LLM's decisions (which
-SQL to attempt, whether the question is identifiable) are scripted via a fake
-inner agent; everything downstream of that is real. This is the boundary that
-lets us test end-to-end behaviour without network access.
+These exercise the real validation → /api/query → QueryService → QueryRepository
+→ SQLite path using the ``initialized_engine`` fixture. The HTTP call from
+``validate_and_execute`` is intercepted by a custom sync ``httpx.BaseTransport``
+that routes the request directly to ``QueryService`` (no network required).
+Only the LLM's decisions are scripted via a fake inner agent; everything
+downstream is real.
 
 Covers spec scenarios across natural-language-to-sql, read-only-validation,
 sql-self-correction-retry, sql-execution, and tool-message-summary.
 """
 
+import json
+from unittest.mock import MagicMock, patch
+
+import httpx
 from langchain_google_genai import ChatGoogleGenerativeAI
 from sqlalchemy import Engine
 
@@ -17,6 +22,7 @@ from app.agents.sql_agent import SqlAgent
 from app.repositories.query_repository import QueryRepository
 from app.schemas.sql_result import SQLGenerationOutput
 from app.services.sql_service import QueryService
+from app.utils.validators import validate_select_only
 
 _REVENUE_SQL = (
     "SELECT o.region, ROUND(SUM(oi.sales), 2) AS revenue "
@@ -25,34 +31,87 @@ _REVENUE_SQL = (
 )
 
 
+class _QueryServiceTransport(httpx.BaseTransport):
+    """Sync httpx transport that routes POST /api/query directly to QueryService.
+
+    Mirrors the route-level validation and serialization of ``QueryRouter``
+    without requiring a running server or ASGI transport.
+    """
+
+    def __init__(self, service: QueryService) -> None:
+        self._service = service
+
+    def handle_request(self, request: httpx.Request) -> httpx.Response:
+        data = json.loads(request.content)
+        sql = data["sql"]
+        if not validate_select_only(sql):
+            return httpx.Response(
+                400,
+                headers={"content-type": "application/json"},
+                content=json.dumps(
+                    {"detail": "Generated query could not be validated."}
+                ).encode(),
+            )
+        try:
+            result = self._service.run_query(sql)
+            body = {
+                "columns": result.columns,
+                "rows": result.dataframe.to_dict(orient="records"),
+                "row_count": result.row_count,
+            }
+            return httpx.Response(
+                200,
+                headers={"content-type": "application/json"},
+                content=json.dumps(body).encode(),
+            )
+        except Exception:
+            return httpx.Response(
+                500,
+                headers={"content-type": "application/json"},
+                content=json.dumps({"detail": "DB error"}).encode(),
+            )
+
+
+def _make_test_client(service: QueryService) -> httpx.Client:
+    return httpx.Client(
+        transport=_QueryServiceTransport(service), base_url="http://testserver"
+    )
+
+
 class _ScriptedInnerAgent:
     """Fake inner create_agent: runs the real inner tool for each scripted SQL.
 
-    Simulates the autonomous SQL agent's tool-calling loop deterministically —
-    each scripted SQL is actually validated and executed against the database —
-    then returns the final state dict with the supplied structured response.
+    Each scripted SQL is actually validated and executed via the test HTTP
+    client, then the final state dict is returned with the supplied structured
+    response.
     """
 
-    def __init__(self, inner_tool, sqls, structured):
+    def __init__(self, inner_tool, sqls, structured, http_client: httpx.Client):
         self._inner_tool = inner_tool
         self._sqls = sqls
         self._structured = structured
+        self._http_client = http_client
 
     def invoke(self, _input, config=None):
         state = {"structured_response": self._structured}
         for sql in self._sqls:
-            command = self._inner_tool.func(sql=sql, tool_call_id="inner")
+            with patch("app.agents.sql_agent.httpx.Client") as mock_cls:
+                mock_cls.return_value.__enter__.return_value = self._http_client
+                mock_cls.return_value.__exit__ = MagicMock(return_value=False)
+                command = self._inner_tool.func(sql=sql, tool_call_id="inner")
             state.update(command.update)
         return state
 
 
 def _pipeline(initialized_engine: Engine, sqls, structured):
-    """Build the query_database tool wired to the real DB with a scripted agent."""
+    """Build the query_database tool wired to the real DB via a test HTTP client."""
     service = QueryService(repository=QueryRepository(db_engine=initialized_engine))
+    http_client = _make_test_client(service)
+
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    agent = SqlAgent(llm, service, retry_limit=3)
+    agent = SqlAgent(llm, api_base_url="http://testserver", retry_limit=3)
     agent._agent = _ScriptedInnerAgent(
-        agent._build_validate_and_execute(), sqls, structured
+        agent._build_validate_and_execute(), sqls, structured, http_client=http_client
     )
     return agent.get_tools()[0]
 

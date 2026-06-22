@@ -2,7 +2,7 @@
 
 Based on the current result, the system must suggest a few relevant follow-up questions the user can run with one click, supporting exploratory analysis. Source: FRS §6.5; FR-10.
 
-> Implemented via the `suggest_followups` tool under the tool-calling agent architecture (issue #1): an LLM call over the original question and the returned data.
+> Implemented by the Follow-up Agent subagent — a `create_agent()` instance with its own LLM and internal tools. Operates over the original question and `query_result` from `WorkflowState`. Depends on issue #4 (agent pattern established).
 
 ## Acceptance Criteria
 

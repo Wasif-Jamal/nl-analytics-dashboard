@@ -12,11 +12,11 @@ import asyncio
 from langchain_core.messages import HumanMessage
 from langgraph.graph.state import CompiledStateGraph
 
-from app.config.log_config import get_logger
+from app.config.log_config import config as log_config
 from app.schemas.requests import AnalyticsRequest
 from app.schemas.responses import AnalyticsResponse
 
-logger = get_logger(__name__)
+logger = log_config.get_logger(__name__)
 
 # Standard FRS §10 message used when an unhandled exception escapes the graph.
 _ERR_DATABASE = "Unable to retrieve data at this time."

@@ -9,9 +9,9 @@ subqueries, and multi-statement input are classified correctly.
 import sqlglot
 from sqlglot import exp
 
-from app.config.log_config import get_logger
+from app.config.log_config import config as log_config
 
-logger = get_logger(__name__)
+logger = log_config.get_logger(__name__)
 
 
 def validate_select_only(sql: str) -> bool:

@@ -7,11 +7,11 @@ repository is never invoked directly by agents or routes. This service stays
 independent of LangGraph.
 """
 
-from app.config.log_config import get_logger
+from app.config.log_config import config as log_config
 from app.repositories.query_repository import QueryRepository
 from app.schemas.sql_result import QueryResult
 
-logger = get_logger(__name__)
+logger = log_config.get_logger(__name__)
 
 
 class QueryService:

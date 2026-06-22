@@ -8,6 +8,16 @@ runs, returning ``422 Unprocessable Entity`` automatically on invalid input.
 from pydantic import BaseModel, Field, field_validator
 
 
+class QueryRequest(BaseModel):
+    """Inbound payload for the execute-query endpoint.
+
+    Attributes:
+        sql: The SELECT statement to execute. Must be non-empty.
+    """
+
+    sql: str = Field(..., min_length=1)
+
+
 class AnalyticsRequest(BaseModel):
     """Inbound payload for the submit-question endpoint.
 

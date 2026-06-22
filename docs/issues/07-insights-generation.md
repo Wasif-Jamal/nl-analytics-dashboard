@@ -2,7 +2,7 @@
 
 Alongside the chart or written answer, the system must generate a short set of actionable insights derived strictly from the returned data — never fabricated. Source: FRS §6.4; FR-9.
 
-> Implemented via the `generate_insights` tool under the tool-calling agent architecture (issue #1): a data-grounded LLM call over the returned rows.
+> Implemented by the Insight Agent subagent — a `create_agent()` instance with its own LLM and internal tools. Reads `query_result` from `WorkflowState`; all insights must be grounded in actual returned data. Depends on issue #4 (agent pattern established).
 
 ## Acceptance Criteria
 

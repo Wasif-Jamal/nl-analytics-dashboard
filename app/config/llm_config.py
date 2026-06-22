@@ -1,17 +1,12 @@
-"""LLM client initialization for the Gemini provider.
-
-Provides :func:`get_llm`, the single sanctioned way to obtain a configured
-``ChatGoogleGenerativeAI`` instance. Import this function; never instantiate
-the LLM directly in agent or node code.
-"""
+"""LLM client initialization for the Gemini provider."""
 
 from langchain_core.globals import set_debug, set_verbose
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.config.env_config import settings
-from app.config.log_config import configure_langchain_logging, get_logger
+from app.config.log_config import config as log_config
 
-logger = get_logger(__name__)
+logger = log_config.get_logger(__name__)
 
 
 class LlmConfig:
@@ -33,7 +28,7 @@ class LlmConfig:
         if settings.langchain_debug:
             set_debug(True)
             logger.info("LangChain debug mode enabled")
-        configure_langchain_logging(
+        log_config.configure_langchain_logging(
             verbose=settings.langchain_verbose,
             debug=settings.langchain_debug,
         )
@@ -49,13 +44,4 @@ class LlmConfig:
         )
 
 
-_config = LlmConfig()
-
-
-def get_llm() -> ChatGoogleGenerativeAI:
-    """Return a configured LLM instance (module-level convenience wrapper).
-
-    Returns:
-        A ``ChatGoogleGenerativeAI`` client from the shared :class:`LlmConfig`.
-    """
-    return _config.get_llm()
+config = LlmConfig()

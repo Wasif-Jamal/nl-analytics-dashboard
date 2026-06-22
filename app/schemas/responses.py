@@ -51,6 +51,20 @@ class AnalyticsResponse(BaseModel):
     session_history: list[str] = []
 
 
+class QueryResponse(BaseModel):
+    """Response payload for the execute-query endpoint.
+
+    Attributes:
+        columns: Ordered column names from the result set.
+        rows: Result rows serialized as a list of dicts (column → value).
+        row_count: Number of rows returned.
+    """
+
+    columns: list[str]
+    rows: list[dict]
+    row_count: int
+
+
 class HealthResponse(BaseModel):
     """Response payload for the health-check endpoint.
 

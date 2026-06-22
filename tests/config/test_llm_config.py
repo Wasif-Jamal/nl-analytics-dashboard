@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-from app.config.llm_config import LlmConfig
+from app.config.llm_config import config as llm_config
 
 
 def test_get_llm_returns_chat_google_generative_ai():
@@ -13,7 +13,9 @@ def test_get_llm_returns_chat_google_generative_ai():
         mock_settings.llm_model = "gemini-2.0-flash"
         mock_settings.llm_temperature = 0.0
         mock_settings.google_api_key = "test-key"
-        llm = LlmConfig().get_llm()
+        mock_settings.langchain_verbose = False
+        mock_settings.langchain_debug = False
+        llm = llm_config.get_llm()
     assert isinstance(llm, ChatGoogleGenerativeAI)
 
 
@@ -23,5 +25,7 @@ def test_get_llm_uses_settings_model():
         mock_settings.llm_model = "gemini-2.0-flash"
         mock_settings.llm_temperature = 0.0
         mock_settings.google_api_key = "test-key"
-        llm = LlmConfig().get_llm()
+        mock_settings.langchain_verbose = False
+        mock_settings.langchain_debug = False
+        llm = llm_config.get_llm()
     assert "gemini-2.0-flash" in llm.model
