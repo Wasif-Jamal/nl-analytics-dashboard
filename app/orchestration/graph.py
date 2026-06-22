@@ -17,7 +17,6 @@ from app.config.env_config import settings
 from app.config.log_config import config as log_config
 from app.orchestration.state import WorkflowState
 from app.prompts.orchestrator_prompt import ORCHESTRATOR_PROMPT
-from app.services.sql_service import QueryService
 
 logger = log_config.get_logger(__name__)
 
@@ -28,19 +27,16 @@ class AnalyticsGraph:
     def __init__(
         self,
         llm: ChatGoogleGenerativeAI,
-        query_service: QueryService,
         retry_limit: int | None = None,
     ) -> None:
         """Store the dependencies used to assemble the supervisor.
 
         Args:
             llm: The chat model driving the supervisor (and the inner SQL agent).
-            query_service: Execution service injected into the SQL agent.
             retry_limit: Self-correction attempt bound for the SQL agent. Defaults
                 to ``settings.sql_retry_limit`` (the ``SQL_RETRY_LIMIT`` env var).
         """
         self._llm = llm
-        self._query_service = query_service
         self._retry_limit = (
             retry_limit if retry_limit is not None else settings.sql_retry_limit
         )
@@ -53,7 +49,7 @@ class AnalyticsGraph:
             The compiled ``create_agent`` graph, ready to ``invoke`` with a
             ``WorkflowState`` containing the user ``question``.
         """
-        sql_agent = SqlAgent(self._llm, self._query_service, self._retry_limit)
+        sql_agent = SqlAgent(self._llm, retry_limit=self._retry_limit)
         tools = sql_agent.get_tools()
         tool_names = [t.name for t in tools]
         logger.info(

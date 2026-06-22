@@ -2,7 +2,7 @@
 
 The SQL agent is the only component permitted to touch the database (AGENTS.md
 §5, §9). It wraps an inner, autonomous ``create_agent`` that generates SQL,
-validates it read-only, executes it via :class:`QueryService`, and self-corrects
+validates it read-only, executes it via ``POST /api/query``, and self-corrects
 through its own reasoning loop. The outer ``query_database`` tool — returned by
 :meth:`SqlAgent.get_tools` for the supervisor graph — invokes that inner agent
 and maps the outcome onto typed ``WorkflowState`` fields via a ``Command``.
@@ -13,6 +13,8 @@ response) and :class:`QueryResult` (execution result written to state).
 
 from typing import Annotated, Optional
 
+import httpx
+import pandas as pd
 from langchain.agents import AgentState, create_agent
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool, InjectedToolCallId, tool
@@ -25,7 +27,6 @@ from app.config.log_config import config as log_config
 from app.orchestration.state import WorkflowState
 from app.prompts.sql_prompt import SQL_SYSTEM_PROMPT
 from app.schemas.sql_result import QueryResult, SQLGenerationOutput
-from app.services.sql_service import QueryService
 from app.utils.validators import validate_select_only
 
 logger = log_config.get_logger(__name__)
@@ -60,19 +61,20 @@ class SqlAgent:
     def __init__(
         self,
         llm: ChatGoogleGenerativeAI,
-        query_service: QueryService,
+        api_base_url: str | None = None,
         retry_limit: int | None = None,
     ) -> None:
         """Build the inner autonomous agent and its execution tool.
 
         Args:
             llm: The chat model the inner agent uses to generate/correct SQL.
-            query_service: Executes validated SQL (the only DB pathway).
+            api_base_url: Base URL of the analytics API (e.g. ``http://localhost:8000``).
+                Defaults to ``settings.api_base_url``.
             retry_limit: Max self-correction attempts; bounds the inner agent's
                 tool-calling loop via ``recursion_limit``. Defaults to
                 ``settings.sql_retry_limit`` (the ``SQL_RETRY_LIMIT`` env var).
         """
-        self._query_service = query_service
+        self._api_base_url = api_base_url or settings.api_base_url
         self._retry_limit = (
             retry_limit if retry_limit is not None else settings.sql_retry_limit
         )
@@ -86,15 +88,15 @@ class SqlAgent:
         )
 
     def _build_validate_and_execute(self) -> BaseTool:
-        """Return the inner ``validate_and_execute`` tool (closure over the service)."""
-        query_service = self._query_service
+        """Return the inner ``validate_and_execute`` tool (closure over api_base_url)."""
+        api_base_url = self._api_base_url
 
         @tool
         def validate_and_execute(
             sql: str,
             tool_call_id: Annotated[str, InjectedToolCallId],
         ) -> Command:
-            """Validate that SQL is read-only and execute it.
+            """Validate that SQL is read-only and execute it via the query API.
 
             Returns a brief result/error summary the agent uses to self-correct,
             and writes the outcome into the inner agent state.
@@ -128,7 +130,19 @@ class SqlAgent:
                 )
             logger.debug("SQL passed read-only validation: %s", sql[:200])
             try:
-                result = query_service.run_query(sql)
+                with httpx.Client() as client:
+                    response = client.post(
+                        f"{api_base_url}/api/query",
+                        json={"sql": sql},
+                        timeout=30.0,
+                    )
+                    response.raise_for_status()
+                    data = response.json()
+                result = QueryResult(
+                    dataframe=pd.DataFrame(data["rows"]),
+                    columns=data["columns"],
+                    row_count=data["row_count"],
+                )
             except Exception as exc:  # noqa: BLE001 — classified, fed back to the agent
                 logger.warning("SQL execution failed: %s", exc)
                 return Command(

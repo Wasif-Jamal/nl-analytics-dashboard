@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     llm_model: str = "gemini-2.0-flash"
     llm_temperature: float = 0.0
     sql_retry_limit: int = 3
+    api_base_url: str = "http://localhost:8000"
     langchain_verbose: bool = False
     langchain_debug: bool = False
 

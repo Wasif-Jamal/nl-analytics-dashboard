@@ -7,20 +7,21 @@ and tool-message-summary. The inner agent is constructed offline with a dummy
 API key (no network at build time).
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
+import httpx
 import pandas as pd
+import pytest
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agents.sql_agent import SqlAgent
 from app.schemas.sql_result import QueryResult, SQLGenerationOutput
-from app.services.sql_service import QueryService
 
 
 def _query_database_tool(inner_return: dict):
     """Build a query_database tool whose inner agent returns ``inner_return``."""
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    agent = SqlAgent(llm, MagicMock(spec=QueryService), retry_limit=3)
+    agent = SqlAgent(llm, api_base_url="http://testserver", retry_limit=3)
     agent._agent = MagicMock()
     agent._agent.invoke.return_value = inner_return
     return agent.get_tools()[0]
@@ -117,7 +118,7 @@ def test_retry_limit_sourced_from_settings(monkeypatch):
 
     monkeypatch.setattr(env_config.settings, "sql_retry_limit", 5)
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    agent = SqlAgent(llm, MagicMock(spec=QueryService))  # no explicit retry_limit
+    agent = SqlAgent(llm, api_base_url="http://testserver")  # no explicit retry_limit
     assert agent._retry_limit == 5
 
     agent._agent = MagicMock()
@@ -138,5 +139,71 @@ def test_retry_limit_defaults_to_settings_value():
 
     assert Settings.model_fields["sql_retry_limit"].default == 3
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    agent = SqlAgent(llm, MagicMock(spec=QueryService))
+    agent = SqlAgent(llm, api_base_url="http://testserver")
     assert agent._retry_limit == settings.sql_retry_limit
+
+
+def test_validate_and_execute_calls_query_api():
+    """validate_and_execute POSTs to /api/query and reconstructs a QueryResult."""
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    agent = SqlAgent(llm, api_base_url="http://testserver", retry_limit=1)
+    inner_tool = agent._build_validate_and_execute()
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = {
+        "columns": ["region", "sales"],
+        "rows": [{"region": "East", "sales": 100.0}],
+        "row_count": 1,
+    }
+
+    with patch("app.agents.sql_agent.httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+        mock_client.post.return_value = mock_response
+
+        command = inner_tool.func(
+            sql="SELECT region, sales FROM order_items",
+            tool_call_id="tc1",
+        )
+
+    mock_client.post.assert_called_once_with(
+        "http://testserver/api/query",
+        json={"sql": "SELECT region, sales FROM order_items"},
+        timeout=30.0,
+    )
+    assert command.update["query_result"].row_count == 1
+    assert command.update["query_result"].columns == ["region", "sales"]
+
+
+def test_validate_and_execute_rejects_non_select():
+    """validate_and_execute returns a validation error for non-SELECT SQL."""
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    agent = SqlAgent(llm, api_base_url="http://testserver", retry_limit=1)
+    inner_tool = agent._build_validate_and_execute()
+
+    command = inner_tool.func(sql="DROP TABLE orders", tool_call_id="tc2")
+
+    assert command.update["error_type"] == "validation"
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        httpx.RequestError("conn"),
+        httpx.HTTPStatusError("500", request=MagicMock(), response=MagicMock()),
+    ],
+)
+def test_validate_and_execute_http_error_maps_to_database_error(exc):
+    """Network and HTTP errors from /api/query map to error_type=database."""
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    agent = SqlAgent(llm, api_base_url="http://testserver", retry_limit=1)
+    inner_tool = agent._build_validate_and_execute()
+
+    with patch("app.agents.sql_agent.httpx.Client") as mock_client_cls:
+        mock_client = MagicMock()
+        mock_client_cls.return_value.__enter__.return_value = mock_client
+        mock_client.post.side_effect = exc
+
+        command = inner_tool.func(sql="SELECT 1", tool_call_id="tc3")
+
+    assert command.update["error_type"] == "database"

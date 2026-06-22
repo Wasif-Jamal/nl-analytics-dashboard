@@ -13,6 +13,7 @@ from app.config.log_config import config as log_config
 from app.orchestration.graph import AnalyticsGraph
 from app.routes.chat_routes import ChatRouter
 from app.routes.health import router as health_router
+from app.routes.query_routes import QueryRouter
 from app.services.chat_service import ChatService
 from app.services.sql_service import QueryService
 from app.utils.database_initializer import DatabaseInitializer
@@ -25,9 +26,10 @@ def create_app() -> FastAPI:
 
     Startup sequence:
     1. ``DatabaseInitializer`` creates tables and loads the CSV once.
-    2. ``AnalyticsGraph`` is compiled once (expensive; shared for all requests).
-    3. ``ChatService`` wraps the graph (manages session history).
-    4. Both API routers are registered on the ``FastAPI`` application.
+    2. ``QueryService`` is built and passed to ``QueryRouter`` (``POST /api/query``).
+    3. ``AnalyticsGraph`` is compiled once (expensive; shared for all requests).
+    4. ``ChatService`` wraps the graph (manages session history).
+    5. All API routers are registered on the ``FastAPI`` application.
 
     Returns:
         The fully configured ``FastAPI`` ASGI application.
@@ -37,15 +39,16 @@ def create_app() -> FastAPI:
 
     app = FastAPI(title="Natural Language Analytics Dashboard API")
 
-    logger.info("Initializing LLM")
-    llm = llm_config.get_llm()
     logger.info("Creating QueryService")
     query_service = QueryService()
+    logger.info("Initializing LLM")
+    llm = llm_config.get_llm()
     logger.info("Building analytics supervisor graph")
-    graph = AnalyticsGraph(llm, query_service).build()
+    graph = AnalyticsGraph(llm).build()
     logger.info("Creating ChatService")
     chat_service = ChatService(graph)
 
+    app.include_router(QueryRouter(query_service).router)
     app.include_router(ChatRouter(chat_service).router)
     app.include_router(health_router)
 
