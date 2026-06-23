@@ -122,11 +122,11 @@ All tuneable runtime values SHALL be sourced from environment variables defined 
 
 #### Scenario: SQL_RETRY_LIMIT is set
 - **WHEN** `SQL_RETRY_LIMIT=5` is present in the environment
-- **THEN** `SqlAgent` retries up to 5 times before surfacing an error
+- **THEN** `SqlAgent` SHALL configure the `create_agent` recursion limit to `5 * 4 + 8 = 28`
 
 #### Scenario: SQL_RETRY_LIMIT is absent
 - **WHEN** `SQL_RETRY_LIMIT` is not set
-- **THEN** `SqlAgent` uses the default of `3` retries
+- **THEN** `SqlAgent` SHALL use the default of `3` retries (`recursion_limit = 3 * 4 + 8 = 20`)
 
 ---
 

@@ -31,3 +31,13 @@ def test_sql_agent_is_registered_as_subgraph():
     pregel_node = graph.nodes["sql_agent"]
     assert len(pregel_node.subgraphs) == 1
     assert isinstance(pregel_node.subgraphs[0], CompiledStateGraph)
+
+
+def test_database_access_boundary():
+    """Database access is encapsulated inside the sql_agent subgraph, not the outer graph."""
+    graph = _build()
+    # Outer graph must have no ToolNode — no tool is directly callable at the supervisor level
+    assert "tools" not in set(graph.nodes)
+    # The sql_agent subgraph is the sole path to the database; it exposes its own tools node
+    inner_graph = graph.nodes["sql_agent"].subgraphs[0]
+    assert "tools" in set(inner_graph.nodes)

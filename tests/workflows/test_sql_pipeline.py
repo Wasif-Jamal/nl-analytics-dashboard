@@ -177,13 +177,17 @@ def test_validation_failure_then_recovers(initialized_engine: Engine):
 
 
 def test_all_attempts_fail_surfaces_validation_error(initialized_engine: Engine):
-    """Repeated non-SELECT SQL blocked by validate_sql; DB is unmodified throughout."""
+    """Repeated non-SELECT SQL blocked by validate_sql; DB is unmodified throughout.
+
+    Simulates the LLM exhausting retries: all validate_sql calls return valid=False,
+    and the final execute_sql call (defense-in-depth) sets the error_message in state.
+    """
     repo = QueryRepository(db_engine=initialized_engine)
     before = repo.execute_select("SELECT COUNT(*) AS n FROM orders").dataframe.iloc[0][
         "n"
     ]
 
-    tools, _ = _make_tools(initialized_engine)
+    tools, http_client = _make_tools(initialized_engine)
     bad_sqls = [
         "DELETE FROM orders",
         "DROP TABLE orders",
@@ -192,6 +196,11 @@ def test_all_attempts_fail_surfaces_validation_error(initialized_engine: Engine)
     for sql in bad_sqls:
         result = tools.validate_sql.func(sql=sql)
         assert result["valid"] is False
+
+    # After exhausting retries the LLM calls execute_sql — defense-in-depth surfaces the error
+    final = _run_execute(tools, http_client, bad_sqls[0])
+    assert final["error_message"] == "Generated query could not be validated."
+    assert final["query_result"] is None
 
     after = repo.execute_select("SELECT COUNT(*) AS n FROM orders").dataframe.iloc[0][
         "n"
