@@ -87,11 +87,21 @@ All error conditions SHALL be surfaced as `st.warning` messages. No raw JSON, st
 ---
 
 ### Requirement: future-fields-ignored
-`insights`, `followup_questions`, `chart_config`, and `session_history` present in the response SHALL be silently ignored. The UI reads only `generated_sql`, `query_result`, and `error_message` in this slice.
 
-#### Scenario: response contains future fields
-- **WHEN** the response JSON contains non-None values for `insights`, `followup_questions`, or `chart_config`
-- **THEN** the UI renders only the SQL panel and results table; no additional panels appear
+`followup_questions` and `chart_config` present in the response SHALL be silently
+ignored. `insights` is now handled by the `insights-display` requirement and SHALL
+NOT be ignored. The UI reads `generated_sql`, `query_result`, `error_message`,
+and `insights`.
+
+#### Scenario: response contains followup_questions or chart_config
+- **WHEN** the response JSON contains non-None values for `followup_questions` or `chart_config`
+- **THEN** the UI renders only the SQL panel, results table/metric, and insights panel; no additional panels appear for those two fields
+
+#### Scenario: insights field is rendered, not ignored
+- **WHEN** the response JSON contains a non-empty `insights` list
+- **THEN** the insights panel IS rendered (see `insights-display`); it is not silently dropped
+
+---
 
 ### Requirement: csv-export
 
@@ -112,4 +122,24 @@ When the multi-row `st.dataframe` path is rendered (`query_result` is non-empty 
 #### Scenario: single-scalar result — download button absent
 - **WHEN** `query_result` is a non-empty list with exactly one row and one column (`row_count == 1` and `len(columns) == 1`), rendering `st.metric`
 - **THEN** no download button is rendered below the metric widget
+
+### Requirement: insights-display
+
+`website/app.py` SHALL render an **Insights** section after the results table/metric
+when the response contains a non-empty `insights` list. Each insight string SHALL be
+rendered as a bullet via `st.markdown`. The section SHALL be absent when `insights`
+is `None`, an empty list, or missing from the response. The insights panel is only
+shown on the success path (inside the `else` branch where `error_message` is `None`).
+
+#### Scenario: insights present — panel rendered
+- **WHEN** `data["insights"]` is a non-empty list of strings
+- **THEN** `st.subheader("Insights")` is rendered, followed by one `st.markdown(f"- {insight}")` call per string, in list order
+
+#### Scenario: insights absent — no panel
+- **WHEN** `data["insights"]` is `None`, `[]`, or absent from the response
+- **THEN** no "Insights" subheader or markdown bullets are rendered
+
+#### Scenario: error path — insights not shown
+- **WHEN** `error_message` is set in the response
+- **THEN** only the `st.warning(error_message)` is shown; the insights panel does not appear
 

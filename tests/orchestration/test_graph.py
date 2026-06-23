@@ -1,8 +1,9 @@
 """Tests for app.orchestration.graph.AnalyticsGraph.
 
 Covers the workflow-state and database-access-boundary requirements at the graph
-level: the graph compiles with the WorkflowState schema and routes directly to
-the ``sql_agent`` subgraph node (plain ``StateGraph``, no supervisor LLM node).
+level: the graph compiles with the WorkflowState schema, routes through
+``sql_agent``, and fans out to the three analysis agents on success (plain
+``StateGraph``, no supervisor LLM node).
 Built offline with a dummy API key (no network).
 """
 
@@ -18,10 +19,35 @@ def _build():
 
 
 def test_build_returns_compiled_graph():
-    """build() returns a CompiledStateGraph with exactly sql_agent as its node."""
+    """build() returns a CompiledStateGraph with all five expected nodes."""
     graph = _build()
     assert isinstance(graph, CompiledStateGraph)
-    assert set(graph.nodes) == {"__start__", "sql_agent"}
+    assert set(graph.nodes) == {
+        "__start__",
+        "sql_agent",
+        "visualization_agent",
+        "insight_agent",
+        "followup_agent",
+    }
+
+
+def test_sql_error_routes_to_end():
+    """_route_after_sql returns END when error_message is set."""
+    from langgraph.graph import END
+
+    from app.orchestration.graph import _route_after_sql
+
+    state = {"error_message": "Unable to identify requested entities.", "messages": []}
+    assert _route_after_sql(state) == END
+
+
+def test_sql_success_fans_out():
+    """_route_after_sql returns all three analysis nodes when no error."""
+    from app.orchestration.graph import _route_after_sql
+
+    state = {"error_message": None, "messages": []}
+    result = _route_after_sql(state)
+    assert set(result) == {"visualization_agent", "insight_agent", "followup_agent"}
 
 
 def test_sql_agent_is_registered_as_subgraph():
@@ -31,6 +57,18 @@ def test_sql_agent_is_registered_as_subgraph():
     pregel_node = graph.nodes["sql_agent"]
     assert len(pregel_node.subgraphs) == 1
     assert isinstance(pregel_node.subgraphs[0], CompiledStateGraph)
+
+
+def test_stub_analysis_nodes_are_non_fatal():
+    """Stub .node() returns {} and cannot raise — satisfies analysis-node-fails-non-fatal."""
+    from app.agents.followup_agent import FollowupAgent
+    from app.agents.visualization_agent import VisualizationAgent
+
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    state: dict = {"question": "q", "messages": []}
+
+    assert VisualizationAgent(llm).node(state) == {}
+    assert FollowupAgent(llm).node(state) == {}
 
 
 def test_database_access_boundary():
