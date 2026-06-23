@@ -26,6 +26,8 @@ from app.schemas.insight_result import InsightOutput
 
 logger = log_config.get_logger(__name__)
 
+_MAX_INSIGHT_ROWS = 200
+
 
 class InsightTools:
     """Builds and holds the ``generate_insights`` ``@tool`` closure for ``InsightAgent``.
@@ -87,7 +89,7 @@ class InsightTools:
                         "insights": [],
                         "messages": [
                             ToolMessage(
-                                content="No data to analyze.",
+                                content="No data.",
                                 tool_call_id=tool_call_id,
                             )
                         ],
@@ -95,7 +97,14 @@ class InsightTools:
                 )
 
             try:
-                rows_json = json.dumps(query_result.rows)
+                rows = query_result.rows[:_MAX_INSIGHT_ROWS]
+                if len(query_result.rows) > _MAX_INSIGHT_ROWS:
+                    logger.warning(
+                        "generate_insights: truncating %d rows to %d for prompt",
+                        len(query_result.rows),
+                        _MAX_INSIGHT_ROWS,
+                    )
+                rows_json = json.dumps(rows)
                 prompt = INSIGHT_INNER_PROMPT.format(
                     question=question,
                     rows_json=rows_json,

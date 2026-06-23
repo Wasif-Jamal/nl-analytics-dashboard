@@ -59,6 +59,18 @@ def test_sql_agent_is_registered_as_subgraph():
     assert isinstance(pregel_node.subgraphs[0], CompiledStateGraph)
 
 
+def test_stub_analysis_nodes_are_non_fatal():
+    """Stub .node() returns {} and cannot raise — satisfies analysis-node-fails-non-fatal."""
+    from app.agents.followup_agent import FollowupAgent
+    from app.agents.visualization_agent import VisualizationAgent
+
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    state: dict = {"question": "q", "messages": []}
+
+    assert VisualizationAgent(llm).node(state) == {}
+    assert FollowupAgent(llm).node(state) == {}
+
+
 def test_database_access_boundary():
     """Database access is encapsulated inside the sql_agent subgraph, not the outer graph."""
     graph = _build()

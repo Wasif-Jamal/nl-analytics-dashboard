@@ -6,7 +6,7 @@ derived from the returned rows. Agents communicate via typed schemas only —
 never unstructured text (AGENTS.md §8).
 """
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class InsightOutput(BaseModel):
@@ -19,4 +19,4 @@ class InsightOutput(BaseModel):
             Each insight is grounded only in facts from the returned data.
     """
 
-    insights: list[str]
+    insights: list[str] = Field(..., min_length=1)
