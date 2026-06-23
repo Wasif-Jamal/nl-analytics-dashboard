@@ -351,14 +351,14 @@ Mapping each `FRS.md` requirement to the design element that satisfies it.
 | FR-2 — generate SQL | SQL Agent (§6.1) `generate_sql` internal tool (§7.2) |
 | FR-3 — validate SQL before execution | SQL Agent `validate_sql` internal tool + `QueryRouter.execute_query` both call `app/utils/validators.py` (defense-in-depth) |
 | FR-4 — execute valid SQL | SQL Agent `execute_sql` internal tool calls `POST /api/query`; `QueryRouter` → `QueryService` → `QueryRepository` (§9.1) |
-| FR-5 — display data in table | Streamlit results table (`website/`); `query_result` state |
+| FR-5 — display data in table | Streamlit `st.dataframe(width="stretch", height=400)` in `website/app.py`; virtual scrolling satisfies FRS §6.6 pagination intent; native column-header sort; `query_result` state |
 | FR-6 — select presentation by result shape | Visualization Agent (§6.2) subagent (§7.2) |
 | FR-7 — render charts | Visualization Agent + Plotly; `chart_config` state; `app/utils/chart_helpers.py` |
 | FR-8 — single-value plain-language answer | Visualization Agent written-answer path (single 1×1 result → sentence) |
 | FR-9 — actionable insights grounded in data | Insight Agent (§6.3) subagent (§7.2) |
 | FR-10 — suggested follow-up questions | Follow-Up Agent (§6.4) subagent (§7.2) |
 | FR-11 — session query history | Streamlit UI generates a UUID4 `session_uuid` on first load (`st.session_state`) and includes it in every API request; `app/services/chat_service.py` holds an in-memory `dict[session_uuid → list[question]]` and appends each successfully answered question; history is never written to the database; response payload includes the session history list for the UI to render |
-| FR-12 — export results as CSV | Streamlit download action (`website/`) over query result DataFrame |
+| FR-12 — export results as CSV | `st.download_button` in `website/app.py` multi-row path; exports `query_results_<timestamp>.csv` (UTF-8, no row index); absent for single-scalar (1×1) metric path |
 | API transport (all FRs) | FastAPI routes (`app/routes/`) + Chat Service (`app/services/chat_service.py`) (§9.3) |
 | Validation (FRS §9) — block non-read-only SQL | SQL Agent `validate_sql` internal tool + `app/utils/validators.py`; allows `SELECT` only |
 | Error handling (FRS §10) | Workflow `error_message` state set inside subagents; supervisor stops invoking further subagents on error; surfaced via API + UI |

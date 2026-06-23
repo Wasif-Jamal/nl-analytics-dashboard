@@ -122,7 +122,7 @@ Alongside the chart or written answer, the system generates a short set of **act
 The system proposes a few relevant **follow-up questions** based on the current result (e.g. after "revenue by region," suggest "show the monthly trend for the top region"). Suggestions are presented as one-click prompts that re-run as new queries.
 
 ### 6.6 Tabular View
-Raw query results in table format, with **pagination**, **sorting**, and **download**.
+Raw query results in table format, with **pagination** (implemented via Streamlit's native virtual scrolling), **sorting**, and **download**. The single-scalar result (1 row × 1 column, presented as a metric) does not include a download button.
 
 ### 6.7 Query History
 Session-level history of user questions: view previously executed questions and re-run them.
