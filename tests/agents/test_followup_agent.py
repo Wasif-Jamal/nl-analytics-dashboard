@@ -194,6 +194,61 @@ def test_followup_agent_node_invokes_agent_with_fresh_state():
     assert call_input["query_result"] is _QUERY_RESULT
 
 
+def test_generate_followup_questions_row_truncation():
+    """Only 50 rows are serialized to the prompt when result set is larger."""
+    import json
+
+    mock_chain = MagicMock()
+    mock_chain.invoke.return_value = FollowupOutput(
+        followup_questions=["q1", "q2", "q3"]
+    )
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_chain
+
+    tools = _make_tools(mock_llm)
+    big_result = QueryResult(
+        rows=[{"region": "East", "sales": float(i)} for i in range(60)],
+        columns=["region", "sales"],
+        row_count=60,
+    )
+    tools.generate_followup_questions.func(
+        tool_call_id="tc-trunc",
+        state={"query_result": big_result, "question": "test", "messages": []},
+    )
+
+    call_args = mock_chain.invoke.call_args[0][0]
+    prompt_text = call_args[0].content
+    after_header = prompt_text.split("Data returned (JSON rows):\n")[1]
+    rows_json_part = after_header.split("\n\nGuidelines:")[0].strip()
+    rows_sent = json.loads(rows_json_part)
+    assert len(rows_sent) == 50
+
+
+def test_followup_agent_node_returns_only_followup_questions():
+    """node() result dict contains ONLY followup_questions — no messages, question, or query_result."""
+    from unittest.mock import patch
+
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    agent = FollowupAgent(llm)
+
+    mock_result = {
+        "messages": [],
+        "followup_questions": ["q1", "q2"],
+        "question": "Show sales by region",
+        "query_result": None,
+    }
+    outer_state = {
+        "question": "Show sales by region",
+        "query_result": _QUERY_RESULT,
+        "messages": [],
+    }
+
+    with patch.object(agent._agent, "invoke", return_value=mock_result):
+        result = agent.node(outer_state)
+
+    assert set(result.keys()) == {"followup_questions"}
+
+
 def test_followup_tools_attribute_set():
     """FollowupTools exposes generate_followup_questions as an instance attribute."""
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")

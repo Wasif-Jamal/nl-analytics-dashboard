@@ -59,8 +59,8 @@ def test_sql_agent_is_registered_as_subgraph():
     assert isinstance(pregel_node.subgraphs[0], CompiledStateGraph)
 
 
-def test_stub_analysis_nodes_are_non_fatal():
-    """Stub .node() returns {} and cannot raise — satisfies analysis-node-fails-non-fatal."""
+def test_visualization_stub_node_is_non_fatal():
+    """VisualizationAgent stub .node() returns {} and cannot raise."""
     from app.agents.visualization_agent import VisualizationAgent
 
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
