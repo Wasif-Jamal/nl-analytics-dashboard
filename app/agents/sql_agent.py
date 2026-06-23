@@ -41,7 +41,7 @@ class SqlAgent:
         _agent: Compiled ``create_agent`` graph with recursion limit bound via
             ``with_config``.
         _retry_limit: Maximum self-correction attempts; bounds ``recursion_limit``
-            as ``retry_limit * 2 + 1``.
+            as ``retry_limit * 4 + 8``.
     """
 
     def __init__(
@@ -54,9 +54,10 @@ class SqlAgent:
 
         Instantiates :class:`~app.tools.sql_tools.SqlTools` with the injected
         ``llm`` and ``api_base_url``, then calls ``create_agent`` to compile the
-        agent graph. Binds ``recursion_limit = retry_limit * 2 + 1`` via
-        ``with_config`` so the retry loop is bounded when the supervisor invokes
-        this subagent.
+        agent graph. Binds ``recursion_limit = retry_limit * 4 + 8`` via
+        ``with_config`` so the retry loop is bounded when the outer graph invokes
+        this subagent. The formula accounts for a 3-tool base path (7 steps)
+        plus 4 additional steps per retry cycle (generate_sql + validate_sql).
 
         Args:
             llm: Chat model driving the SQL Agent's ReAct loop and the nested
@@ -86,6 +87,6 @@ class SqlAgent:
             system_prompt=SQL_SYSTEM_PROMPT,
             state_schema=WorkflowState,
             name="sql_agent",
-        ).with_config({"recursion_limit": self._retry_limit * 2 + 1})
+        ).with_config({"recursion_limit": self._retry_limit * 4 + 8})
 
-        logger.info("SqlAgent compiled (recursion_limit=%d)", self._retry_limit * 2 + 1)
+        logger.info("SqlAgent compiled (recursion_limit=%d)", self._retry_limit * 4 + 8)
