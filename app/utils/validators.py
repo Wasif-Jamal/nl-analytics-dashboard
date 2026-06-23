@@ -1,7 +1,8 @@
 """Read-only SQL validation for the SQL pipeline.
 
-Provides :func:`validate_select_only`, the guard the ``query_database`` tool
-applies before any generated SQL reaches the database (FRS §9, AGENTS.md §9).
+Provides :func:`validate_select_only`, the guard that ``validate_sql`` and
+``execute_sql`` (defense-in-depth) apply before any generated SQL reaches the
+database (FRS §9, AGENTS.md §9).
 Validation is AST-based via ``sqlglot`` — never string/regex matching — so CTEs,
 subqueries, and multi-statement input are classified correctly.
 """

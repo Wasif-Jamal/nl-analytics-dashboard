@@ -1,8 +1,10 @@
+> **Superseded by issue #4 (SQL Agent Subagent Refactor).** This document describes the initial implementation. The canonical agent pattern is now the `create_agent()` subagent with explicit internal tools (`generate_sql`, `validate_sql`, `execute_sql`) — see `docs/issues/04-sql-agent-subagent.md`.
+
 ## Requirement
 
 Business users submit a plain-English question; the system generates the corresponding SQL, validates it as read-only, executes it against the database, and returns the result as a structured payload. Source: FRS §6.1, §6.2; FR-1, FR-2, FR-3, FR-4.
 
-> Implemented as the `query_database` tool exposed by `SqlAgent.get_tools()` and executed by `ToolNode` inside the `create_agent` supervisor. Generation, validation, and execution are a single atomic tool call with an internal self-correction retry loop.
+> Initially implemented as the `query_database` tool exposed by `SqlAgent.get_tools()` and executed by `ToolNode` inside the `create_agent` supervisor. Generation, validation, and execution are a single atomic tool call with an internal self-correction retry loop.
 
 ## Acceptance Criteria
 

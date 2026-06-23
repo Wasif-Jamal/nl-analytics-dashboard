@@ -15,7 +15,7 @@ from app.schemas.sql_result import QueryResult
 
 
 class WorkflowState(MessagesState):
-    """Shared state for the ``create_agent`` supervisor graph.
+    """Shared state for the analytics graph.
 
     Inherits ``messages`` (the ReAct conversation history) from ``MessagesState``.
     The SQL pipeline populates ``question``, ``generated_sql``, ``sql_explanation``,

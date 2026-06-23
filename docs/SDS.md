@@ -185,7 +185,7 @@ nl-analytics-dashboard/
 
 ## 6. Multi-Agent Design
 
-The application uses specialized agents that are each invoked as a **subagent** by the supervisor. Every agent is a `create_agent()` instance that manages its own internal tools and returns a typed `Command` updating the shared workflow state (§7.1). Internal tools read prior results from `WorkflowState` via `InjectedState`; the supervisor never serializes the dataset back into a subagent call.
+The application uses specialized agents that are each invoked as a subgraph node by the outer `StateGraph`. Every agent is a `create_agent()` instance that manages its own internal tools and returns a typed `Command` updating the shared workflow state (§7.1). The outer graph never serializes the full dataset back into a subagent call — analysis agents receive the prior state fields they need when the supervisor routes to them.
 
 ### 6.1 SQL Agent
 **Responsibilities:** understand database schema · generate SQL · validate SQL · execute SQL · correct invalid SQL · explain generated SQL.
@@ -204,7 +204,7 @@ The agent's internal LLM decides which tools to call and drives the generate →
 ### 6.2 Visualization Agent
 **Responsibilities:** analyze query result structure · select visualization type · generate chart configuration.
 **Supported visualizations:** Bar Chart · Line Chart · Pie Chart · Scatter Plot · Table.
-The Visualization Agent is a `create_agent()` instance with its own LLM and internal tools. It reads `query_result` from `WorkflowState` via `InjectedState` and produces a `ChartConfig`.
+The Visualization Agent is a `create_agent()` instance with its own LLM and internal tools. It reads `query_result` from `WorkflowState` and produces a `ChartConfig`.
 
 ### 6.3 Insight Agent
 **Responsibilities:** analyze returned data · identify trends · identify outliers · generate actionable business insights.
@@ -248,9 +248,9 @@ The supervisor routes to agent subagents. Each subagent is a `create_agent()` in
 | Subagent | Input (from WorkflowState) | Output / Responsibility |
 |---|---|---|
 | SQL Agent (§6.1) | User question | Internal tools: `generate_sql` → `validate_sql` → `execute_sql` (POST /api/query → SQLite) → conditional retry. Returns `Command{generated_sql, sql_explanation, query_result}` or sets `error_message`. |
-| Visualization Agent (§6.2) | `query_result` (InjectedState) | LLM-driven chart config → `Command{chart_config}` |
-| Insight Agent (§6.3) | `query_result` (InjectedState) | Data-grounded insights → `Command{insights}` |
-| Follow-Up Agent (§6.4) | `question` + `query_result` (InjectedState) | Suggested follow-up questions → `Command{followup_questions}` |
+| Visualization Agent (§6.2) | `query_result` | LLM-driven chart config → `Command{chart_config}` |
+| Insight Agent (§6.3) | `query_result` | Data-grounded insights → `Command{insights}` |
+| Follow-Up Agent (§6.4) | `question` + `query_result` | Suggested follow-up questions → `Command{followup_questions}` |
 
 ### 7.3 Parallel Analytics
 There is no dedicated Response node. After the SQL Agent succeeds, the supervisor invokes the Visualization Agent, Insight Agent, and Follow-Up Agent **in parallel**; their `Command` updates merge into state. The Chat Service reads the final aggregated state and returns it to the API layer, which serves the Streamlit UI.

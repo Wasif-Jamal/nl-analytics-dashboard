@@ -1,10 +1,10 @@
 """SQL execution service.
 
 ``QueryService`` is the business-logic intermediary between the SQL agent's
-``query_database`` tool and the data-access layer. It enforces the call chain
-``query_database -> QueryService -> QueryRepository -> SQLite`` (SDS §9.2): the
-repository is never invoked directly by agents or routes. This service stays
-independent of LangGraph.
+``execute_sql`` tool and the data-access layer. It enforces the call chain
+``execute_sql -> POST /api/query -> QueryService -> QueryRepository -> SQLite``
+(SDS §9.2): the repository is never invoked directly by agents or routes.
+This service stays independent of LangGraph.
 """
 
 from app.config.log_config import config as log_config

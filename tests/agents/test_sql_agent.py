@@ -1,189 +1,189 @@
-"""Tests for app.agents.sql_agent.SqlAgent — the query_database tool mapping.
+"""Unit tests for app.tools.sql_tools.SqlTools and app.agents.sql_agent.SqlAgent.
 
-The inner autonomous agent is replaced with a mock so each test controls the
-``invoke`` return (structured_response + query_result + error_type). Covers spec
-scenarios under natural-language-to-sql, sql-self-correction-retry, sql-execution,
-and tool-message-summary. The inner agent is constructed offline with a dummy
-API key (no network at build time).
+Tests each of the four internal tools directly via their ``.func`` attribute
+(bypassing LangChain's tool-calling wrapper), and verifies that ``SqlAgent``
+wires the retry limit from settings into the compiled agent config.
+
+All network calls (``httpx.Client``) and LLM calls
+(``llm.with_structured_output``) are mocked; no real API key or server is
+needed.
+
+Covers spec scenarios: natural-language-to-sql, read-only-validation,
+sql-execution, tool-message-summary, execute-sql-terminal,
+handle-unidentifiable, env-configuration, sql-tools-class.
 """
 
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pandas as pd
 import pytest
 from langchain_google_genai import ChatGoogleGenerativeAI
 
 from app.agents.sql_agent import SqlAgent
 from app.schemas.sql_result import QueryResult, SQLGenerationOutput
+from app.tools.sql_tools import SqlTools
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+_API_BASE = "http://testserver"
+_SELECT_SQL = "SELECT region, SUM(sales) AS sales FROM order_items GROUP BY region"
 
 
-def _query_database_tool(inner_return: dict):
-    """Build a query_database tool whose inner agent returns ``inner_return``."""
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    agent = SqlAgent(llm, api_base_url="http://testserver", retry_limit=3)
-    agent._agent = MagicMock()
-    agent._agent.invoke.return_value = inner_return
-    return agent.get_tools()[0]
-
-
-def _invoke(tool, question: str = "show total sales by region") -> dict:
-    """Call the tool's underlying function with explicit injected args."""
-    command = tool.func(question=question, tool_call_id="call_1", _state={})
-    return command.update
-
-
-def _result(row_count: int = 2) -> QueryResult:
-    frame = pd.DataFrame({"region": ["East", "West"], "revenue": [10.0, 20.0]})
-    return QueryResult(
-        dataframe=frame, columns=["region", "revenue"], row_count=row_count
+def _make_tools(mock_llm=None) -> SqlTools:
+    """Return a SqlTools instance, optionally with a mocked LLM."""
+    llm = mock_llm or ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash", google_api_key="test-key"
     )
+    return SqlTools(llm=llm, api_base_url=_API_BASE)
 
 
-def test_unidentified_entities_sets_error_and_no_result():
-    """is_identifiable=False → standard message, no query_result, no execution."""
-    tool = _query_database_tool(
-        {
-            "structured_response": SQLGenerationOutput(
-                sql="", explanation="unknown", is_identifiable=False
-            )
-        }
-    )
-    update = _invoke(tool)
-    assert update["error_message"] == "Unable to identify requested entities."
-    assert update["query_result"] is None
-
-
-def test_success_sets_result_and_clears_error():
-    """A successful run stores query_result, clears error, and uses the template."""
-    output = SQLGenerationOutput(
-        sql="SELECT region, SUM(sales) FROM ...",
-        explanation="by region",
-        is_identifiable=True,
-    )
-    tool = _query_database_tool(
-        {"structured_response": output, "query_result": _result(2), "error_type": None}
-    )
-    update = _invoke(tool)
-    assert update["query_result"].row_count == 2
-    assert update["error_message"] is None
-    assert update["generated_sql"] == output.sql
-    assert update["sql_explanation"] == "by region"
-    summary = update["messages"][0].content
-    assert summary == "retrieved 2 rows. Columns: region, revenue"
-
-
-def test_validation_failure_maps_to_validation_message():
-    """error_type=validation with no result → 'could not be validated' message."""
-    output = SQLGenerationOutput(sql="SELECT 1", explanation="x", is_identifiable=True)
-    tool = _query_database_tool(
-        {"structured_response": output, "error_type": "validation"}
-    )
-    update = _invoke(tool)
-    assert update["error_message"] == "Generated query could not be validated."
-    assert update["query_result"] is None
-    assert update["generated_sql"] == "SELECT 1"
-    assert update["sql_explanation"] == "x"
-
-
-def test_database_failure_maps_to_database_message():
-    """error_type=database with no result → 'unable to retrieve' message."""
-    output = SQLGenerationOutput(
-        sql="SELECT bad", explanation="x", is_identifiable=True
-    )
-    tool = _query_database_tool(
-        {"structured_response": output, "error_type": "database"}
-    )
-    update = _invoke(tool)
-    assert update["error_message"] == "Unable to retrieve data at this time."
-    assert update["query_result"] is None
-    assert update["generated_sql"] == "SELECT bad"
-    assert update["sql_explanation"] == "x"
-
-
-def test_empty_result_maps_to_no_data_message():
-    """A zero-row result → 'no data found' message, query_result cleared."""
-    output = SQLGenerationOutput(sql="SELECT 1", explanation="x", is_identifiable=True)
-    tool = _query_database_tool(
-        {"structured_response": output, "query_result": _result(0), "error_type": None}
-    )
-    update = _invoke(tool)
-    assert update["error_message"] == "No data found for the requested query."
-    assert update["query_result"] is None
-
-
-def test_retry_limit_sourced_from_settings(monkeypatch):
-    """SQL_RETRY_LIMIT (via settings) bounds the inner agent's recursion limit."""
-    from app.config import env_config
-
-    monkeypatch.setattr(env_config.settings, "sql_retry_limit", 5)
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    agent = SqlAgent(llm, api_base_url="http://testserver")  # no explicit retry_limit
-    assert agent._retry_limit == 5
-
-    agent._agent = MagicMock()
-    output = SQLGenerationOutput(sql="SELECT 1", explanation="x", is_identifiable=True)
-    agent._agent.invoke.return_value = {
-        "structured_response": output,
-        "query_result": _result(2),
-        "error_type": None,
+def _mock_http_response(
+    columns: list[str],
+    rows: list[dict],
+    row_count: int,
+    status_code: int = 200,
+) -> MagicMock:
+    resp = MagicMock()
+    resp.json.return_value = {
+        "columns": columns,
+        "rows": rows,
+        "row_count": row_count,
     }
-    _invoke(agent.get_tools()[0])
-    config = agent._agent.invoke.call_args.kwargs["config"]
-    assert config["recursion_limit"] == 5 * 2 + 1
+    if status_code != 200:
+        resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            str(status_code), request=MagicMock(), response=MagicMock()
+        )
+    return resp
 
 
-def test_retry_limit_defaults_to_settings_value():
-    """With SQL_RETRY_LIMIT absent, the limit defaults to settings (3) and is wired."""
-    from app.config.env_config import Settings, settings
-
-    assert Settings.model_fields["sql_retry_limit"].default == 3
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    agent = SqlAgent(llm, api_base_url="http://testserver")
-    assert agent._retry_limit == settings.sql_retry_limit
+def _patch_http(mock_response: MagicMock):
+    """Context manager that patches httpx.Client inside sql_tools."""
+    mock_cls = MagicMock()
+    mock_cls.return_value.__enter__.return_value.post.return_value = mock_response
+    return patch("app.tools.sql_tools.httpx.Client", mock_cls), mock_cls
 
 
-def test_validate_and_execute_calls_query_api():
-    """validate_and_execute POSTs to /api/query and reconstructs a QueryResult."""
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    agent = SqlAgent(llm, api_base_url="http://testserver", retry_limit=1)
-    inner_tool = agent._build_validate_and_execute()
+# ---------------------------------------------------------------------------
+# generate_sql
+# ---------------------------------------------------------------------------
 
-    mock_response = MagicMock()
-    mock_response.json.return_value = {
-        "columns": ["region", "sales"],
-        "rows": [{"region": "East", "sales": 100.0}],
-        "row_count": 1,
-    }
 
-    with patch("app.agents.sql_agent.httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__.return_value = mock_client
-        mock_client.post.return_value = mock_response
+def test_generate_sql_identifiable():
+    """generate_sql returns SQLGenerationOutput with is_identifiable=True."""
+    mock_chain = MagicMock()
+    mock_chain.invoke.return_value = SQLGenerationOutput(
+        sql=_SELECT_SQL, explanation="sales by region", is_identifiable=True
+    )
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_chain
 
-        command = inner_tool.func(
-            sql="SELECT region, sales FROM order_items",
+    tools = _make_tools(mock_llm)
+    result = tools.generate_sql.func(question="show total sales by region")
+
+    assert isinstance(result, SQLGenerationOutput)
+    assert result.is_identifiable is True
+    assert result.sql == _SELECT_SQL
+    mock_llm.with_structured_output.assert_called_once_with(SQLGenerationOutput)
+
+
+def test_generate_sql_unidentifiable():
+    """generate_sql returns is_identifiable=False for unknown-entity questions."""
+    mock_chain = MagicMock()
+    mock_chain.invoke.return_value = SQLGenerationOutput(
+        sql="", explanation="unknown entities", is_identifiable=False
+    )
+    mock_llm = MagicMock()
+    mock_llm.with_structured_output.return_value = mock_chain
+
+    tools = _make_tools(mock_llm)
+    result = tools.generate_sql.func(question="show dragon sales by galaxy")
+
+    assert result.is_identifiable is False
+
+
+# ---------------------------------------------------------------------------
+# validate_sql
+# ---------------------------------------------------------------------------
+
+
+def test_validate_sql_valid_select():
+    """validate_sql returns {valid: True} for a SELECT statement."""
+    tools = _make_tools()
+    result = tools.validate_sql.func(sql="SELECT 1")
+    assert result == {"valid": True}
+
+
+def test_validate_sql_rejects_write():
+    """validate_sql returns valid=False with a reason for non-SELECT SQL."""
+    tools = _make_tools()
+    for bad_sql in [
+        "DROP TABLE orders",
+        "DELETE FROM orders",
+        "INSERT INTO orders VALUES (1)",
+    ]:
+        result = tools.validate_sql.func(sql=bad_sql)
+        assert result["valid"] is False
+        assert "reason" in result
+
+
+# ---------------------------------------------------------------------------
+# execute_sql
+# ---------------------------------------------------------------------------
+
+
+def test_execute_sql_success():
+    """execute_sql writes result fields and clears error_message on success."""
+    tools = _make_tools()
+    mock_resp = _mock_http_response(
+        columns=["region", "sales"],
+        rows=[{"region": "East", "sales": 100.0}],
+        row_count=1,
+    )
+    ctx, _ = _patch_http(mock_resp)
+    with ctx:
+        command = tools.execute_sql.func(
+            sql=_SELECT_SQL,
+            explanation="sales by region",
             tool_call_id="tc1",
         )
 
-    mock_client.post.assert_called_once_with(
-        "http://testserver/api/query",
-        json={"sql": "SELECT region, sales FROM order_items"},
-        timeout=30.0,
-    )
-    assert command.update["query_result"].row_count == 1
-    assert command.update["query_result"].columns == ["region", "sales"]
+    u = command.update
+    assert u["error_message"] is None
+    assert u["generated_sql"] == _SELECT_SQL
+    assert u["sql_explanation"] == "sales by region"
+    assert isinstance(u["query_result"], QueryResult)
+    assert u["query_result"].row_count == 1
+    assert u["messages"][0].content == "retrieved 1 rows. Columns: region, sales"
 
 
-def test_validate_and_execute_rejects_non_select():
-    """validate_and_execute returns a validation error for non-SELECT SQL."""
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    agent = SqlAgent(llm, api_base_url="http://testserver", retry_limit=1)
-    inner_tool = agent._build_validate_and_execute()
+def test_execute_sql_zero_rows():
+    """execute_sql sets _ERR_EMPTY and clears query_result on a 0-row result."""
+    tools = _make_tools()
+    mock_resp = _mock_http_response(columns=["region"], rows=[], row_count=0)
+    ctx, _ = _patch_http(mock_resp)
+    with ctx:
+        command = tools.execute_sql.func(
+            sql=_SELECT_SQL, explanation="x", tool_call_id="tc2"
+        )
 
-    command = inner_tool.func(sql="DROP TABLE orders", tool_call_id="tc2")
+    u = command.update
+    assert u["error_message"] == "No data found for the requested query."
+    assert u["query_result"] is None
 
-    assert command.update["error_type"] == "validation"
+
+def test_execute_sql_defense_in_depth_blocks_write():
+    """execute_sql blocks non-SELECT SQL without calling POST /api/query."""
+    tools = _make_tools()
+    with patch("app.tools.sql_tools.httpx.Client") as mock_cls:
+        command = tools.execute_sql.func(
+            sql="DELETE FROM orders", explanation="", tool_call_id="tc3"
+        )
+        mock_cls.assert_not_called()
+
+    assert command.update["error_message"] == "Generated query could not be validated."
+    assert command.update["query_result"] is None
 
 
 @pytest.mark.parametrize(
@@ -193,17 +193,63 @@ def test_validate_and_execute_rejects_non_select():
         httpx.HTTPStatusError("500", request=MagicMock(), response=MagicMock()),
     ],
 )
-def test_validate_and_execute_http_error_maps_to_database_error(exc):
-    """Network and HTTP errors from /api/query map to error_type=database."""
+def test_execute_sql_http_error(exc):
+    """Network and HTTP errors map to _ERR_DATABASE; query_result is None."""
+    tools = _make_tools()
+    with patch("app.tools.sql_tools.httpx.Client") as mock_cls:
+        mock_cls.return_value.__enter__.return_value.post.side_effect = exc
+        command = tools.execute_sql.func(
+            sql=_SELECT_SQL, explanation="x", tool_call_id="tc4"
+        )
+
+    assert command.update["error_message"] == "Unable to retrieve data at this time."
+    assert command.update["query_result"] is None
+
+
+# ---------------------------------------------------------------------------
+# handle_unidentifiable
+# ---------------------------------------------------------------------------
+
+
+def test_handle_unidentifiable():
+    """handle_unidentifiable sets _ERR_UNIDENTIFIED and clears sql/result fields."""
+    tools = _make_tools()
+    command = tools.handle_unidentifiable.func(tool_call_id="tc5")
+
+    u = command.update
+    assert u["error_message"] == "Unable to identify requested entities."
+    assert u["query_result"] is None
+    assert u["generated_sql"] is None
+    assert u["messages"][0].content == "Unable to identify requested entities."
+
+
+# ---------------------------------------------------------------------------
+# SqlAgent — retry limit wiring
+# ---------------------------------------------------------------------------
+
+
+def test_retry_limit_sourced_from_settings(monkeypatch):
+    """SQL_RETRY_LIMIT env var is read and stored on SqlAgent._retry_limit."""
+    from app.config import env_config
+
+    monkeypatch.setattr(env_config.settings, "sql_retry_limit", 5)
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    agent = SqlAgent(llm, api_base_url="http://testserver", retry_limit=1)
-    inner_tool = agent._build_validate_and_execute()
+    agent = SqlAgent(llm, api_base_url=_API_BASE)
+    assert agent._retry_limit == 5
 
-    with patch("app.agents.sql_agent.httpx.Client") as mock_client_cls:
-        mock_client = MagicMock()
-        mock_client_cls.return_value.__enter__.return_value = mock_client
-        mock_client.post.side_effect = exc
 
-        command = inner_tool.func(sql="SELECT 1", tool_call_id="tc3")
+def test_retry_limit_defaults_to_settings_value():
+    """Without explicit retry_limit, SqlAgent reads the default (3) from settings."""
+    from app.config.env_config import Settings, settings
 
-    assert command.update["error_type"] == "database"
+    assert Settings.model_fields["sql_retry_limit"].default == 3
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    agent = SqlAgent(llm, api_base_url=_API_BASE)
+    assert agent._retry_limit == settings.sql_retry_limit
+
+
+def test_sql_tools_passed_to_create_agent():
+    """SqlAgent builds a compiled _agent from the four SqlTools closures."""
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    agent = SqlAgent(llm, api_base_url=_API_BASE, retry_limit=1)
+    assert agent._agent is not None
