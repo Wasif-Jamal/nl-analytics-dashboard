@@ -248,3 +248,34 @@ def test_query_result_none_when_absent(
     assert resp.query_result is None
     assert resp.columns is None
     assert resp.row_count is None
+
+
+# ---------------------------------------------------------------------------
+# Tests — spec: response-schema (chart_config serialization)
+# ---------------------------------------------------------------------------
+
+
+def test_chart_config_serialized_to_dict(
+    service: ChatService, mock_graph: MagicMock
+) -> None:
+    """Spec: ChartConfig Pydantic object in state — serialized to dict in response."""
+    from app.schemas.chart_config import ChartConfig
+
+    chart = ChartConfig(
+        chart_type="bar", x="category", y="sales", title="Sales by Category"
+    )
+    mock_graph.invoke.return_value = _make_state(chart_config=chart)
+    resp = _run(service.ask(_make_request()))
+
+    assert resp.chart_config == chart.model_dump()
+    assert isinstance(resp.chart_config, dict)
+
+
+def test_chart_config_none_when_absent(
+    service: ChatService, mock_graph: MagicMock
+) -> None:
+    """Spec: no chart_config in state — response chart_config is None."""
+    mock_graph.invoke.return_value = _make_state(chart_config=None)
+    resp = _run(service.ask(_make_request()))
+
+    assert resp.chart_config is None

@@ -70,10 +70,13 @@ class ChatService:
         ``asyncio.to_thread``, then maps final workflow state onto
         ``AnalyticsResponse`` in the event loop. If ``query_result`` is set in
         state, serializes the ``pd.DataFrame`` to ``list[dict]`` via
-        ``to_dict(orient="records")`` so the response is JSON-safe. Appends the
-        question to session history if and only if the workflow completes without
-        an ``error_message``. Any unhandled exception is caught and mapped to the
-        standard FRS §10 database-error message; no stack trace is exposed.
+        ``to_dict(orient="records")`` so the response is JSON-safe. If
+        ``chart_config`` is set in state, serializes the :class:`~app.schemas.chart_config.ChartConfig`
+        Pydantic object to a plain ``dict`` via ``.model_dump()`` so it is
+        JSON-safe for the API response. Appends the question to session history
+        if and only if the workflow completes without an ``error_message``. Any
+        unhandled exception is caught and mapped to the standard FRS §10
+        database-error message; no stack trace is exposed.
 
         Args:
             request: The validated inbound request containing ``question``
@@ -115,6 +118,11 @@ class ChatService:
                 serialized_rows = query_result_obj.dataframe.to_dict(orient="records")
                 columns = query_result_obj.columns
                 row_count = query_result_obj.row_count
+            # Serialize ChartConfig Pydantic object to a plain dict for JSON safety.
+            chart_config_obj = result.get("chart_config")
+            chart_config_dict = (
+                chart_config_obj.model_dump() if chart_config_obj is not None else None
+            )
             # History mutations run in the event loop (after the await) —
             # single-threaded, no lock required.
             history = self._history.setdefault(request.session_uuid, [])
@@ -133,7 +141,7 @@ class ChatService:
                 query_result=serialized_rows,
                 columns=columns,
                 row_count=row_count,
-                chart_config=result.get("chart_config"),
+                chart_config=chart_config_dict,
                 insights=result.get("insights"),
                 followup_questions=result.get("followup_questions"),
                 error_message=error_message,
