@@ -7,8 +7,12 @@ classification function used by the Visualization Agent before it builds a
 ``ChartConfig``.
 """
 
+_PIE_KEYWORDS = frozenset({"share", "percent", "ratio", "pct"})
 
-def classify_shape(columns: list[str], dtypes: dict[str, str], row_count: int) -> dict:
+
+def classify_shape(
+    columns: list[str], dtypes: dict[str, str], row_count: int
+) -> dict[str, str | None]:
     """Classify the best chart type for a query result by inspecting its shape.
 
     Applies heuristics in priority order:
@@ -35,7 +39,6 @@ def classify_shape(columns: list[str], dtypes: dict[str, str], row_count: int) -
         A dict with keys ``chart_type``, ``x``, and ``y``.  ``x`` and ``y``
         are either a column-name string or ``None``.
     """
-    _PIE_KEYWORDS = {"share", "percent", "ratio", "pct"}
 
     def _is_string(col: str) -> bool:
         dtype = dtypes.get(col, "")
