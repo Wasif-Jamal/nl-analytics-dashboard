@@ -1,8 +1,9 @@
 """Tests for app.orchestration.graph.AnalyticsGraph.
 
 Covers the workflow-state and database-access-boundary requirements at the graph
-level: the graph compiles with the WorkflowState schema and routes directly to
-the ``sql_agent`` subgraph node (plain ``StateGraph``, no supervisor LLM node).
+level: the graph compiles with the WorkflowState schema, routes through
+``sql_agent``, and fans out to the three analysis agents on success (plain
+``StateGraph``, no supervisor LLM node).
 Built offline with a dummy API key (no network).
 """
 
@@ -18,10 +19,35 @@ def _build():
 
 
 def test_build_returns_compiled_graph():
-    """build() returns a CompiledStateGraph with exactly sql_agent as its node."""
+    """build() returns a CompiledStateGraph with all five expected nodes."""
     graph = _build()
     assert isinstance(graph, CompiledStateGraph)
-    assert set(graph.nodes) == {"__start__", "sql_agent"}
+    assert set(graph.nodes) == {
+        "__start__",
+        "sql_agent",
+        "visualization_agent",
+        "insight_agent",
+        "followup_agent",
+    }
+
+
+def test_sql_error_routes_to_end():
+    """_route_after_sql returns END when error_message is set."""
+    from langgraph.graph import END
+
+    from app.orchestration.graph import _route_after_sql
+
+    state = {"error_message": "Unable to identify requested entities.", "messages": []}
+    assert _route_after_sql(state) == END
+
+
+def test_sql_success_fans_out():
+    """_route_after_sql returns all three analysis nodes when no error."""
+    from app.orchestration.graph import _route_after_sql
+
+    state = {"error_message": None, "messages": []}
+    result = _route_after_sql(state)
+    assert set(result) == {"visualization_agent", "insight_agent", "followup_agent"}
 
 
 def test_sql_agent_is_registered_as_subgraph():
