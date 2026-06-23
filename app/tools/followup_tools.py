@@ -43,6 +43,7 @@ class _FollowupToolState(TypedDict, total=False):
 
 logger = log_config.get_logger(__name__)
 
+# Follow-up generation needs data shape and representative patterns, not every row — 50 is sufficient and keeps prompt small.
 _MAX_FOLLOWUP_ROWS = 50
 
 
