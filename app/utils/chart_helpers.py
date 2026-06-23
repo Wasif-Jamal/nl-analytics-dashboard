@@ -25,7 +25,8 @@ def classify_shape(
     6. All other shapes → table
 
     Dtype classification rules (based on pandas dtype name strings):
-    - String/categorical: dtype == ``"object"`` or starts with ``"string"``
+    - String/categorical: dtype == ``"object"``, dtype == ``"str"`` (pandas 3+),
+      or starts with ``"string"``
     - Numeric: starts with ``"float"``, ``"int"``, or ``"uint"``
     - Date/datetime: starts with ``"datetime"`` or dtype == ``"date"``
 
@@ -42,7 +43,9 @@ def classify_shape(
 
     def _is_string(col: str) -> bool:
         dtype = dtypes.get(col, "")
-        return dtype == "object" or dtype.startswith("string")
+        # "object" = pandas < 3; "str" = pandas 3+ native string dtype;
+        # "string[...]" = pd.StringDtype variants
+        return dtype == "object" or dtype == "str" or dtype.startswith("string")
 
     def _is_numeric(col: str) -> bool:
         dtype = dtypes.get(col, "")
