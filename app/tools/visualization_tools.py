@@ -72,7 +72,12 @@ class VisualizationTools:
                 one of ``bar``, ``line``, ``pie``, ``scatter``, ``table``, or
                 ``single_value``.  ``x`` and ``y`` are column-name strings or ``None``.
             """
-            qr = state["query_result"]
+            qr = state.get("query_result")
+            if qr is None:
+                logger.warning(
+                    "analyze_shape: query_result is None, falling back to table"
+                )
+                return {"chart_type": "table", "x": None, "y": None}
             dtypes = {col: str(dtype) for col, dtype in qr.dataframe.dtypes.items()}
             result = classify_shape(qr.columns, dtypes, qr.row_count)
             logger.debug("analyze_shape: %s", result)
@@ -81,9 +86,10 @@ class VisualizationTools:
         @tool
         def build_chart_config(
             chart_type: str,
-            x: Optional[str],
-            y: Optional[str],
             title: str,
+            x: Optional[str] = None,
+            y: Optional[str] = None,
+            *,
             tool_call_id: Annotated[str, InjectedToolCallId],
         ) -> Command:
             """Assemble a ChartConfig and write it to WorkflowState.
