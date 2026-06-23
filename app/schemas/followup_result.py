@@ -22,4 +22,4 @@ class FollowupOutput(BaseModel):
             actionable; no filler or fabricated prompts are included.
     """
 
-    followup_questions: list[str] = Field(..., min_length=1)
+    followup_questions: list[str] = Field(..., min_length=1, max_length=3)
