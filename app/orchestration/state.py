@@ -11,6 +11,7 @@ from typing import Optional
 
 from langgraph.graph import MessagesState
 
+from app.schemas.chart_config import ChartConfig
 from app.schemas.sql_result import QueryResult
 
 
@@ -27,7 +28,8 @@ class WorkflowState(MessagesState):
         generated_sql: The SQL produced by the SQL agent.
         sql_explanation: Plain-English explanation of the generated SQL.
         query_result: Executed query result (DataFrame + metadata).
-        chart_config: Visualization config (issue #5).
+        chart_config: Typed visualization config produced by the Visualization
+            Agent (issue #5).
         insights: Generated insights (issue #6).
         followup_questions: Suggested follow-up questions (issue #7).
         error_message: Standard user-facing error message, if any step failed.
@@ -37,7 +39,7 @@ class WorkflowState(MessagesState):
     generated_sql: Optional[str]
     sql_explanation: Optional[str]
     query_result: Optional[QueryResult]
-    chart_config: Optional[dict]
+    chart_config: Optional[ChartConfig]
     insights: Optional[list[str]]
     followup_questions: Optional[list[str]]
     error_message: Optional[str]
