@@ -32,7 +32,7 @@ def validate_select_only(sql: str) -> bool:
     """
     try:
         statements = sqlglot.parse(sql, dialect="sqlite")
-    except sqlglot.errors.ParseError:
+    except (sqlglot.errors.ParseError, sqlglot.errors.TokenError):
         logger.warning("SQL validation failed: could not parse statement")
         return False
 
