@@ -15,7 +15,7 @@ A plain-English question submitted to the system SHALL be converted into a valid
 - **THEN** the tool shall not execute any query and `error_message` is set to `Unable to identify requested entities.`
 
 #### Scenario: generated SQL is recorded
-- **WHEN** `query_database` successfully generates SQL
+- **WHEN** `generate_sql` successfully produces SQL
 - **THEN** `generated_sql` and `sql_explanation` are written to `WorkflowState` before execution occurs
 
 ---
@@ -73,25 +73,25 @@ A validated `SELECT` query SHALL be executed against the SQLite database through
 ---
 
 ### Requirement: database-access-boundary
-`QueryRepository` SHALL only be invoked through `QueryService` and the `query_database` tool workflow. The enforced call chain is:
+`QueryRepository` SHALL only be invoked through `QueryService` via the `execute_sql` tool. The enforced call chain is:
 
 ```
-query_database → QueryService → QueryRepository → SQLite
+execute_sql → POST /api/query → QueryService → QueryRepository → SQLite
 ```
 
 No agent, route, or other service may invoke `QueryRepository` directly.
 
-#### Scenario: query_database executes a query
-- **WHEN** `query_database` calls `QueryService`, which delegates to `QueryRepository.execute_select(sql)`
+#### Scenario: execute_sql executes a query
+- **WHEN** `execute_sql` calls `POST /api/query`, which routes to `QueryService`, which delegates to `QueryRepository.execute_select(sql)`
 - **THEN** the repository manages the SQLAlchemy session, executes the query, and returns a `QueryResult` Pydantic wrapper; no component outside this chain touches the database
 
 ---
 
 ### Requirement: tool-message-summary
-The `query_database` tool SHALL return a `Command(update={...})` with a brief, fixed-template `ToolMessage` summary. The summary MUST NOT contain the full result set.
+The `execute_sql` tool SHALL return a `Command(update={...})` with a brief, fixed-template `ToolMessage` summary. The summary MUST NOT contain the full result set.
 
 #### Scenario: successful execution
-- **WHEN** `query_database` succeeds
+- **WHEN** `execute_sql` succeeds
 - **THEN** the `ToolMessage` content follows the template: `"retrieved {row_count} rows. Columns: {col1}, {col2}, …"` and the full result lives in `query_result` state only
 
 ---

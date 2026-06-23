@@ -7,10 +7,10 @@ full SQL pipeline: ``generate_sql`` (nested structured-output LLM call),
 and writes results to ``WorkflowState``), and ``handle_unidentifiable``
 (terminal handler when the question references unknown schema entities).
 
-The compiled agent is exposed via ``self._agent`` and registered with the
-supervisor by ``AnalyticsGraph`` using ``create_supervisor``. There is no
-``get_tools()`` method — the SQL Agent's internal tools are invisible to the
-supervisor (AGENTS.md §5, §6).
+The compiled agent is exposed via ``self._agent`` and added to the outer
+``StateGraph`` by ``AnalyticsGraph`` as a subgraph node named ``"sql_agent"``.
+There is no ``get_tools()`` method — the SQL Agent's internal tools are
+invisible to the outer graph (AGENTS.md §5, §6).
 
 Contracts consumed/produced: :class:`~app.schemas.sql_result.SQLGenerationOutput`
 (inner structured output) and :class:`~app.schemas.sql_result.QueryResult`
@@ -32,10 +32,10 @@ logger = log_config.get_logger(__name__)
 class SqlAgent:
     """SQL pipeline subagent — ``create_agent()`` instance with four internal tools.
 
-    ``self._agent`` is the compiled ``create_agent`` graph, ready to be passed
-    to ``create_supervisor`` as a subagent. Its internal tools
-    (``generate_sql``, ``validate_sql``, ``execute_sql``,
-    ``handle_unidentifiable``) are invisible to the supervisor.
+    ``self._agent`` is the compiled ``create_agent`` graph, added to the outer
+    ``StateGraph`` as a subgraph node. Its internal tools (``generate_sql``,
+    ``validate_sql``, ``execute_sql``, ``handle_unidentifiable``) are invisible
+    to the outer graph.
 
     Attributes:
         _agent: Compiled ``create_agent`` graph with recursion limit bound via
