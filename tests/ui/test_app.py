@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 from streamlit.testing.v1 import AppTest
+from streamlit.testing.v1.element_tree import UnknownElement
 
 APP_PATH = "website/app.py"
 
@@ -24,6 +25,16 @@ def _mock_response(data: dict) -> MagicMock:
     m = MagicMock()
     m.json.return_value = data
     return m
+
+
+def _download_buttons(at: AppTest) -> list:
+    """Return UnknownElements with label 'Download CSV' from the main block."""
+    return [
+        v
+        for v in at.main.children.values()
+        if isinstance(v, UnknownElement)
+        and getattr(v.proto, "label", "") == "Download CSV"
+    ]
 
 
 def _success_data(question: str = "Show monthly sales") -> dict:
@@ -229,6 +240,99 @@ def test_usable_after_network_error() -> None:
     assert len(at.warning) > 0
     assert len(at.text_input) > 0
     assert len(at.button) > 0
+
+
+# ---------------------------------------------------------------------------
+# Tests — spec: csv-export
+# ---------------------------------------------------------------------------
+
+
+def test_csv_download_button_present_with_results() -> None:
+    """Spec: results present — download button visible with label 'Download CSV'."""
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+    at.text_input[0].set_value("Show monthly sales")
+
+    with patch("httpx.post", return_value=_mock_response(_success_data())):
+        at.button[0].click()
+        at.run()
+
+    assert len(_download_buttons(at)) == 1
+
+
+def test_csv_download_content_matches_query_result() -> None:
+    """Spec: results present — CSV bytes equal pd.DataFrame(query_result).to_csv(index=False)."""
+    import pandas as pd
+    import streamlit as _st
+
+    data = _success_data()
+    expected = pd.DataFrame(data["query_result"]).to_csv(index=False).encode("utf-8")
+    captured: dict = {}
+
+    original_dl = _st.download_button
+
+    def capture_and_call(**kwargs: object) -> object:
+        captured.update(kwargs)
+        return original_dl(**kwargs)
+
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+    at.text_input[0].set_value("Show monthly sales")
+
+    with (
+        patch("httpx.post", return_value=_mock_response(data)),
+        patch.object(_st, "download_button", side_effect=capture_and_call),
+    ):
+        at.button[0].click()
+        at.run()
+
+    assert captured.get("data") == expected
+    assert captured.get("label") == "Download CSV"
+    assert captured.get("mime") == "text/csv"
+    assert str(captured.get("file_name", "")).startswith("query_results_")
+
+
+def test_csv_download_button_absent_for_scalar_result() -> None:
+    """Spec: single-scalar result — st.metric shown, no download button rendered."""
+    data = {
+        "question": "How many customers do we have?",
+        "generated_sql": "SELECT COUNT(DISTINCT customer_id) AS customer_count FROM customers",
+        "query_result": [{"customer_count": 736}],
+        "columns": ["customer_count"],
+        "row_count": 1,
+        "error_message": None,
+        "session_history": ["How many customers do we have?"],
+    }
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+    at.text_input[0].set_value("How many customers do we have?")
+
+    with patch("httpx.post", return_value=_mock_response(data)):
+        at.button[0].click()
+        at.run()
+
+    assert len(at.metric) == 1
+    assert len(_download_buttons(at)) == 0
+
+
+def test_csv_download_button_absent_without_results() -> None:
+    """Spec: no results — download button absent; error-display owns the messaging."""
+    error_data = {
+        "question": "Show dragon sales",
+        "generated_sql": None,
+        "query_result": None,
+        "error_message": "Unable to identify requested entities.",
+        "session_history": [],
+    }
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+    at.text_input[0].set_value("Show dragon sales")
+
+    with patch("httpx.post", return_value=_mock_response(error_data)):
+        at.button[0].click()
+        at.run()
+
+    assert len(_download_buttons(at)) == 0
 
 
 # ---------------------------------------------------------------------------

@@ -56,15 +56,16 @@ If the response contains a non-None `generated_sql`, the UI SHALL display it in 
 ---
 
 ### Requirement: results-display
-If the response contains a non-None `query_result`, the UI SHALL display the rows in a `st.dataframe` table.
+
+If the response contains a non-None, non-empty `query_result`, the UI SHALL display the rows in a fixed-height `st.dataframe` with virtual scrolling and native column-header sorting enabled.
 
 #### Scenario: rows present in response
 - **WHEN** `query_result` is a non-empty list of dicts in the response
-- **THEN** `st.dataframe(query_result)` is rendered below the SQL panel
+- **THEN** `st.dataframe(query_result, width="stretch", height=400)` is rendered below the SQL panel, providing virtual scroll for large result sets and click-to-sort on column headers
 
 #### Scenario: empty result set
 - **WHEN** `query_result` is `None`, an empty list, or absent
-- **THEN** no dataframe is rendered (error message will have been set by the backend)
+- **THEN** no dataframe is rendered (the backend will have set `error_message`, which `error-display` surfaces)
 
 ---
 
@@ -91,4 +92,24 @@ All error conditions SHALL be surfaced as `st.warning` messages. No raw JSON, st
 #### Scenario: response contains future fields
 - **WHEN** the response JSON contains non-None values for `insights`, `followup_questions`, or `chart_config`
 - **THEN** the UI renders only the SQL panel and results table; no additional panels appear
+
+### Requirement: csv-export
+
+When the multi-row `st.dataframe` path is rendered (`query_result` is non-empty and the result is not a single scalar value), the UI SHALL render a `st.download_button` immediately below the dataframe that exports the full result set as a CSV file. The button SHALL be absent when no results are available and when the result is a single scalar value (1 row × 1 column, rendered as `st.metric`).
+
+#### Scenario: results present — download button visible
+- **WHEN** `query_result` is a non-empty list of dicts and the result is not a single scalar (i.e., it is not the case that `row_count == 1` and `len(columns) == 1`)
+- **THEN** a `st.download_button` labelled "Download CSV" is rendered below the dataframe; clicking it downloads a file named `query_results_<YYYYMMDD_HHMMSS>.csv` (timestamp formatted at render time) containing all rows, with column headers, as UTF-8 CSV; `index` is not included in the CSV output
+
+#### Scenario: results present — CSV content is exact
+- **WHEN** the user clicks "Download CSV"
+- **THEN** the downloaded bytes equal `pd.DataFrame(query_result).to_csv(index=False).encode("utf-8")`; no values are transformed or omitted
+
+#### Scenario: no results — download button absent
+- **WHEN** `query_result` is `None` or an empty list
+- **THEN** no download button is rendered; the `error-display` requirement handles messaging
+
+#### Scenario: single-scalar result — download button absent
+- **WHEN** `query_result` is a non-empty list with exactly one row and one column (`row_count == 1` and `len(columns) == 1`), rendering `st.metric`
+- **THEN** no download button is rendered below the metric widget
 

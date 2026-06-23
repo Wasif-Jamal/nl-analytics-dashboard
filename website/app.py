@@ -6,8 +6,10 @@ the ``app/`` package directly. Run with ``uv run streamlit run website/app.py``.
 """
 
 import uuid
+from datetime import datetime
 
 import httpx
+import pandas as pd
 import streamlit as st
 
 API_BASE_URL = "http://localhost:8000"
@@ -52,7 +54,23 @@ if submitted:
                             value = query_result[0][columns[0]]
                             st.metric(label=columns[0], value=value)
                         else:
-                            st.dataframe(query_result)
+                            st.dataframe(
+                                query_result,
+                                width="stretch",
+                                height=400,
+                            )
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            csv_bytes = (
+                                pd.DataFrame(query_result)
+                                .to_csv(index=False)
+                                .encode("utf-8")
+                            )
+                            st.download_button(
+                                label="Download CSV",
+                                data=csv_bytes,
+                                file_name=f"query_results_{timestamp}.csv",
+                                mime="text/csv",
+                            )
             except httpx.ConnectError:
                 st.warning("Could not connect to the server. Please try again.")
             except httpx.RequestError:
