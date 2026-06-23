@@ -24,7 +24,6 @@ Data returned (JSON rows):
 {rows_json}
 
 Guidelines:
-- Propose exactly 3 follow-up questions.
 - Each question must be independently executable as a new database query.
 - Questions should drill down into a subset, compare cohorts, extend a trend, or explore details in the data.
 - Each question is concise and actionable for a business user.
