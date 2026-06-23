@@ -65,6 +65,6 @@ class QueryRouter:
         result = self._query_service.run_query(request.sql)
         return QueryResponse(
             columns=result.columns,
-            rows=result.dataframe.to_dict(orient="records"),
+            rows=result.rows,
             row_count=result.row_count,
         )

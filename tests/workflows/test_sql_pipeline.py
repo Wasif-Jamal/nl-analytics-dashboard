@@ -64,7 +64,7 @@ class _QueryServiceTransport(httpx.BaseTransport):
             result = self._service.run_query(sql)
             body = {
                 "columns": result.columns,
-                "rows": result.dataframe.to_dict(orient="records"),
+                "rows": result.rows,
                 "row_count": result.row_count,
             }
             return httpx.Response(
@@ -183,9 +183,7 @@ def test_all_attempts_fail_surfaces_validation_error(initialized_engine: Engine)
     and the final execute_sql call (defense-in-depth) sets the error_message in state.
     """
     repo = QueryRepository(db_engine=initialized_engine)
-    before = repo.execute_select("SELECT COUNT(*) AS n FROM orders").dataframe.iloc[0][
-        "n"
-    ]
+    before = repo.execute_select("SELECT COUNT(*) AS n FROM orders").rows[0]["n"]
 
     tools, http_client = _make_tools(initialized_engine)
     bad_sqls = [
@@ -202,18 +200,14 @@ def test_all_attempts_fail_surfaces_validation_error(initialized_engine: Engine)
     assert final["error_message"] == "Generated query could not be validated."
     assert final["query_result"] is None
 
-    after = repo.execute_select("SELECT COUNT(*) AS n FROM orders").dataframe.iloc[0][
-        "n"
-    ]
+    after = repo.execute_select("SELECT COUNT(*) AS n FROM orders").rows[0]["n"]
     assert after == before  # nothing was modified
 
 
 def test_read_only_guard_blocks_write(initialized_engine: Engine):
     """execute_sql defense-in-depth blocks DELETE and leaves the DB unmodified."""
     repo = QueryRepository(db_engine=initialized_engine)
-    before = repo.execute_select("SELECT COUNT(*) AS n FROM orders").dataframe.iloc[0][
-        "n"
-    ]
+    before = repo.execute_select("SELECT COUNT(*) AS n FROM orders").rows[0]["n"]
 
     tools, http_client = _make_tools(initialized_engine)
     update = _run_execute(tools, http_client, "DELETE FROM orders")
@@ -221,9 +215,7 @@ def test_read_only_guard_blocks_write(initialized_engine: Engine):
     assert update["error_message"] == "Generated query could not be validated."
     assert update["query_result"] is None
 
-    after = repo.execute_select("SELECT COUNT(*) AS n FROM orders").dataframe.iloc[0][
-        "n"
-    ]
+    after = repo.execute_select("SELECT COUNT(*) AS n FROM orders").rows[0]["n"]
     assert after == before
 
 

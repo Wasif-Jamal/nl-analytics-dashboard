@@ -3,8 +3,8 @@
 ``WorkflowState`` subclasses LangGraph's ``MessagesState`` (so ``messages`` and
 its reducer come for free) and adds the analytics fields the agent tools read
 and write via ``Command`` updates (SDS §7.1). It is in-process execution state:
-``query_result`` holds a ``QueryResult`` (containing a DataFrame) and is not
-required to be JSON-serializable.
+``query_result`` holds a ``QueryResult`` (rows as ``list[dict]``) and is
+directly JSON-serializable.
 """
 
 from typing import Optional
@@ -26,7 +26,7 @@ class WorkflowState(MessagesState):
         question: The user's natural-language question.
         generated_sql: The SQL produced by the SQL agent.
         sql_explanation: Plain-English explanation of the generated SQL.
-        query_result: Executed query result (DataFrame + metadata).
+        query_result: Executed query result (rows as list[dict] + metadata).
         chart_config: Visualization config (issue #5).
         insights: Generated insights (issue #6).
         followup_questions: Suggested follow-up questions (issue #7).

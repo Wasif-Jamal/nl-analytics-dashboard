@@ -7,13 +7,12 @@ as instance attributes so ``SqlAgent`` can pass them by name to ``create_agent``
 
 Contracts consumed/produced: :class:`~app.schemas.sql_result.SQLGenerationOutput`
 (returned by ``generate_sql``) and :class:`~app.schemas.sql_result.QueryResult`
-(written to ``WorkflowState.query_result`` via ``Command`` by ``execute_sql``).
+(rows stored as ``list[dict]``, written to ``WorkflowState.query_result`` via ``Command``).
 """
 
 from typing import Annotated
 
 import httpx
-import pandas as pd
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import InjectedToolCallId, tool
 from langgraph.types import Command
@@ -161,7 +160,7 @@ class SqlTools:
                     response.raise_for_status()
                     data = response.json()
                 result = QueryResult(
-                    dataframe=pd.DataFrame(data["rows"]),
+                    rows=data["rows"],
                     columns=data["columns"],
                     row_count=data["row_count"],
                 )

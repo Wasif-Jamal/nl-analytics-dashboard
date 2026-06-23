@@ -54,13 +54,13 @@ On SQL generation failure, SQL validation failure, or SQL execution failure caus
 A validated `SELECT` query SHALL be executed against the SQLite database through `QueryService`, which delegates to `QueryRepository`. The result SHALL be stored as a `QueryResult` object in `query_result` within `WorkflowState`.
 
 `QueryResult` contains:
-- `dataframe` — the raw `pd.DataFrame` returned by the database
+- `rows` — result rows as `list[dict]` (column → value per row)
 - `columns` — list of column names
 - `row_count` — number of rows returned
 
 #### Scenario: query returns rows
 - **WHEN** the validated SQL executes successfully and returns one or more rows
-- **THEN** `query_result` is set to a `QueryResult` object containing `dataframe`, `columns`, and `row_count` in `WorkflowState`
+- **THEN** `query_result` is set to a `QueryResult` object containing `rows`, `columns`, and `row_count` in `WorkflowState`
 
 #### Scenario: query returns zero rows
 - **WHEN** the validated SQL executes successfully but returns no rows
@@ -109,7 +109,7 @@ The `execute_sql` tool SHALL return a `Command(update={...})` with a brief, fixe
 - `followup_questions`
 - `error_message`
 
-It is an in-process execution state; `query_result` holds a `QueryResult` object (containing a `pd.DataFrame`) and is not required to be JSON-serializable.
+It is an in-process execution state; `query_result` holds a `QueryResult` object with `rows: list[dict]`, `columns`, and `row_count`. The object is directly JSON-serializable.
 
 #### Scenario: state initialised for a new question
 - **WHEN** the graph is invoked with a user question

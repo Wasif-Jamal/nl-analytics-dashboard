@@ -69,8 +69,8 @@ class ChatService:
         Offloads the blocking ``graph.invoke()`` call to a thread pool via
         ``asyncio.to_thread``, then maps final workflow state onto
         ``AnalyticsResponse`` in the event loop. If ``query_result`` is set in
-        state, serializes the ``pd.DataFrame`` to ``list[dict]`` via
-        ``to_dict(orient="records")`` so the response is JSON-safe. Appends the
+        state, reads ``QueryResult.rows`` (already ``list[dict]``) directly into
+        the response. Appends the
         question to session history if and only if the workflow completes without
         an ``error_message``. Any unhandled exception is caught and mapped to the
         standard FRS §10 database-error message; no stack trace is exposed.
@@ -106,13 +106,12 @@ class ChatService:
                     error_message,
                 )
                 error_message = _ERR_DATABASE
-            # Serialize QueryResult (DataFrame) into JSON-safe fields for the response.
             query_result_obj = result.get("query_result")
             serialized_rows: list[dict] | None = None
             columns: list[str] | None = None
             row_count: int | None = None
             if query_result_obj is not None:
-                serialized_rows = query_result_obj.dataframe.to_dict(orient="records")
+                serialized_rows = query_result_obj.rows
                 columns = query_result_obj.columns
                 row_count = query_result_obj.row_count
             # History mutations run in the event loop (after the await) —
