@@ -24,7 +24,7 @@ class AnalyticsResponse(BaseModel):
         question: Echo of the submitted question.
         generated_sql: SQL produced by the SQL agent; ``None`` on error.
         sql_explanation: Plain-English explanation of the SQL; ``None`` on error.
-        query_result: Serialized rows from ``QueryResult.dataframe.to_dict(orient="records")``;
+        query_result: Serialized rows from ``QueryResult.rows`` (already ``list[dict]``);
             ``None`` when no data was returned or an error occurred.
         columns: Ordered column names from ``QueryResult.columns``; ``None`` when
             ``query_result`` is ``None``.

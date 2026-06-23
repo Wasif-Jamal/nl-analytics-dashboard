@@ -6,7 +6,6 @@ logic — query generation and validation happen upstream (SQL agent). SQLAlchem
 errors are allowed to propagate so the caller can classify them.
 """
 
-import pandas as pd
 from sqlalchemy import Engine, text
 
 from app.config.db_config import config as db_config
@@ -30,17 +29,15 @@ class QueryRepository:
             sql: A read-only ``SELECT`` query, already validated upstream.
 
         Returns:
-            A :class:`QueryResult` wrapping the result DataFrame, its column
-            names, and the row count (an empty DataFrame yields ``row_count=0``).
+            A :class:`QueryResult` with rows as ``list[dict]``, column names,
+            and the row count (an empty result yields ``row_count=0``).
         """
         logger.info("Executing query (%d chars)", len(sql))
         with self._engine.connect() as connection:
-            dataframe = pd.read_sql(text(sql), connection)
-        result = QueryResult(
-            dataframe=dataframe,
-            columns=list(dataframe.columns),
-            row_count=len(dataframe),
-        )
+            cursor = connection.execute(text(sql))
+            columns = list(cursor.keys())
+            rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        result = QueryResult(rows=rows, columns=columns, row_count=len(rows))
         logger.info(
             "Query complete: %d row(s), columns=%s", result.row_count, result.columns
         )

@@ -1,8 +1,11 @@
 """Centralized logging configuration."""
 
 import logging
+import logging.handlers
+from pathlib import Path
 
 _LOG_FORMAT = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
+_LOG_DIR = Path(__file__).parent.parent.parent / "logs"
 
 _LANGCHAIN_NAMESPACES = (
     "langchain",
@@ -16,21 +19,35 @@ class LogConfig:
     """Configures the root logger and vends named loggers for the application.
 
     Ensures the root logger is configured exactly once regardless of how many
-    modules call :meth:`get_logger`.
+    modules call :meth:`get_logger`. Writes to both the console and a
+    daily-rotating log file under ``<project_root>/logs/app.log``.
     """
 
     def __init__(self) -> None:
         self._configured = False
 
     def _configure_root(self) -> None:
-        """Attach a stream handler and level to the root logger exactly once."""
+        """Attach console and file handlers to the root logger exactly once."""
         if self._configured:
             return
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter(_LOG_FORMAT))
+        formatter = logging.Formatter(_LOG_FORMAT)
+
+        console_handler = logging.StreamHandler()
+        console_handler.setFormatter(formatter)
+
+        _LOG_DIR.mkdir(parents=True, exist_ok=True)
+        file_handler = logging.handlers.TimedRotatingFileHandler(
+            _LOG_DIR / "app.log",
+            when="midnight",
+            backupCount=30,
+            encoding="utf-8",
+        )
+        file_handler.setFormatter(formatter)
+
         root = logging.getLogger()
         if not root.handlers:
-            root.addHandler(handler)
+            root.addHandler(console_handler)
+            root.addHandler(file_handler)
         root.setLevel(logging.INFO)
         self._configured = True
 

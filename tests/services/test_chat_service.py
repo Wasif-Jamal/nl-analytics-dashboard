@@ -11,7 +11,6 @@ and the streamlit-ui spec (spec: response-schema).
 import asyncio
 from unittest.mock import MagicMock
 
-import pandas as pd
 import pytest
 
 from app.schemas.requests import AnalyticsRequest
@@ -226,7 +225,7 @@ def test_query_result_serialized_in_response(
 ) -> None:
     """Spec: successful workflow — query_result serialized to list[dict] in response."""
     qr = QueryResult(
-        dataframe=pd.DataFrame([{"month": "Jan", "sales": 1000}]),
+        rows=[{"month": "Jan", "sales": 1000}],
         columns=["month", "sales"],
         row_count=1,
     )

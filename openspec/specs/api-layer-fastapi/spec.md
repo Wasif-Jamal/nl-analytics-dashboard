@@ -29,7 +29,7 @@ An analytics request SHALL be represented as `AnalyticsRequest` in `app/schemas/
 
 | Field | Type | Notes |
 |---|---|---|
-| `query_result` | `Optional[list[dict]]` | Serialized rows — `QueryResult.dataframe.to_dict(orient="records")`; `None` when no data was returned or an error occurred |
+| `query_result` | `Optional[list[dict]]` | Rows from `QueryResult.rows` (already `list[dict]`); `None` when no data was returned or an error occurred |
 | `columns` | `Optional[list[str]]` | Ordered column names from `QueryResult.columns`; `None` when `query_result` is `None` |
 | `row_count` | `Optional[int]` | Row count from `QueryResult.row_count`; `None` when `query_result` is `None` |
 
@@ -73,7 +73,7 @@ All previously defined fields (`question`, `generated_sql`, `sql_explanation`, `
 
 #### Scenario: query_result in state — serialization
 - **WHEN** `ChatService.ask()` reads final state with `query_result` set (a `QueryResult` object)
-- **THEN** `AnalyticsResponse.query_result` is set to `query_result.dataframe.to_dict(orient="records")`, `columns` to `query_result.columns`, and `row_count` to `query_result.row_count`
+- **THEN** `AnalyticsResponse.query_result` is set to `query_result.rows`, `columns` to `query_result.columns`, and `row_count` to `query_result.row_count`
 
 #### Scenario: query_result absent in state
 - **WHEN** `ChatService.ask()` reads final state with `query_result` as `None` (error path or no data)

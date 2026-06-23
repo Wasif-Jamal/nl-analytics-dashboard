@@ -6,7 +6,6 @@ Uses FastAPI's ``TestClient`` against a minimal app assembled from
 
 from unittest.mock import MagicMock
 
-import pandas as pd
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
@@ -29,11 +28,7 @@ def client(mock_service: MagicMock) -> TestClient:
 
 
 def _make_result(rows: list[dict], columns: list[str]) -> QueryResult:
-    return QueryResult(
-        dataframe=pd.DataFrame(rows),
-        columns=columns,
-        row_count=len(rows),
-    )
+    return QueryResult(rows=rows, columns=columns, row_count=len(rows))
 
 
 def test_post_query_success(client: TestClient, mock_service: MagicMock) -> None:

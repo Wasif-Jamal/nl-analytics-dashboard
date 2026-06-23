@@ -1,6 +1,5 @@
 """Tests for app.repositories.query_repository.QueryRepository."""
 
-import pandas as pd
 from sqlalchemy import Engine
 
 from app.repositories.query_repository import QueryRepository
@@ -12,7 +11,7 @@ def test_execute_select_returns_query_result(initialized_engine: Engine):
     repo = QueryRepository(db_engine=initialized_engine)
     result = repo.execute_select("SELECT * FROM customers")
     assert isinstance(result, QueryResult)
-    assert isinstance(result.dataframe, pd.DataFrame)
+    assert isinstance(result.rows, list)
     assert result.row_count == 2
     assert result.columns == ["customer_id", "customer_name", "segment"]
 
@@ -25,7 +24,7 @@ def test_aggregation_join_query(initialized_engine: Engine):
         "FROM order_items oi JOIN orders o ON oi.order_id = o.order_id "
         "GROUP BY o.region"
     )
-    revenue = dict(zip(result.dataframe["region"], result.dataframe["revenue"]))
+    revenue = {row["region"]: row["revenue"] for row in result.rows}
     assert revenue["South"] == 1093.9  # 261.96 + 731.94 + 100.0
     assert revenue["East"] == 14.62
 

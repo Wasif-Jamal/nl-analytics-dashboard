@@ -5,8 +5,7 @@
 layers communicate via typed schemas only — never unstructured text (AGENTS.md §8).
 """
 
-import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
 class SQLGenerationOutput(BaseModel):
@@ -26,18 +25,16 @@ class SQLGenerationOutput(BaseModel):
 class QueryResult(BaseModel):
     """Result of a successfully executed read-only ``SELECT`` query.
 
-    Stored in ``WorkflowState.query_result`` as in-process execution state; holds
-    a native DataFrame for efficient downstream analytics and is therefore not
-    JSON-serializable.
+    Stored in ``WorkflowState.query_result`` as in-process execution state.
+    Rows are kept as JSON-native ``list[dict]`` so the object is directly
+    serializable without a DataFrame round-trip.
 
     Attributes:
-        dataframe: The rows returned by the query.
+        rows: Result rows, each as a column-name → value mapping.
         columns: Column names, in result order.
         row_count: Number of rows returned.
     """
 
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
-    dataframe: pd.DataFrame
+    rows: list[dict]
     columns: list[str]
     row_count: int
