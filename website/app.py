@@ -71,6 +71,11 @@ if submitted:
                                 file_name=f"query_results_{timestamp}.csv",
                                 mime="text/csv",
                             )
+                    insights = data.get("insights") or []
+                    if insights:
+                        st.subheader("Insights")
+                        for insight in insights:
+                            st.markdown(f"- {insight}")
             except httpx.ConnectError:
                 st.warning("Could not connect to the server. Please try again.")
             except httpx.RequestError:

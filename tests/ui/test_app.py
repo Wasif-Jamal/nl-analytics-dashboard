@@ -341,12 +341,10 @@ def test_csv_download_button_absent_without_results() -> None:
 
 
 def test_future_fields_in_response_produce_no_extra_ui() -> None:
-    """Spec: response contains future fields — only SQL expander and dataframe rendered."""
+    """Spec: followup_questions and chart_config are silently ignored; no extra panels."""
     data = _success_data()
-    data["insights"] = ["Sales peaked in January."]
     data["followup_questions"] = ["What drove January sales?"]
     data["chart_config"] = {"type": "bar", "x": "month", "y": "sales"}
-    data["session_history"] = ["Show monthly sales"]
 
     at = AppTest.from_file(APP_PATH)
     at.run()
@@ -356,8 +354,71 @@ def test_future_fields_in_response_produce_no_extra_ui() -> None:
         at.button[0].click()
         at.run()
 
-    # SQL expander and dataframe are rendered as normal.
+    # SQL expander and dataframe rendered; no extra panels for ignored fields.
     assert len(at.expander) == 1
     assert len(at.dataframe) == 1
-    # No warnings — future fields must not trigger error rendering.
     assert len(at.warning) == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests — spec: insights-display
+# ---------------------------------------------------------------------------
+
+
+def test_insights_present_panel_rendered() -> None:
+    """Spec: insights-display — non-empty insights rendered as subheader + bullets."""
+    data = _success_data()
+    data["insights"] = ["Sales peaked in January.", "March had the lowest margin."]
+
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+    at.text_input[0].set_value("Show monthly sales")
+
+    with patch("httpx.post", return_value=_mock_response(data)):
+        at.button[0].click()
+        at.run()
+
+    assert any("Insights" in str(s.value) for s in at.subheader)
+    assert any("Sales peaked in January." in str(m.value) for m in at.markdown)
+    assert any("March had the lowest margin." in str(m.value) for m in at.markdown)
+
+
+def test_insights_absent_no_panel() -> None:
+    """Spec: insights-display — no Insights panel when insights is None, [], or missing."""
+    for insights_value in [None, [], "missing"]:
+        data = _success_data()
+        if insights_value == "missing":
+            data.pop("insights", None)
+        else:
+            data["insights"] = insights_value
+
+        at = AppTest.from_file(APP_PATH)
+        at.run()
+        at.text_input[0].set_value("Show monthly sales")
+
+        with patch("httpx.post", return_value=_mock_response(data)):
+            at.button[0].click()
+            at.run()
+
+        assert not any("Insights" in str(s.value) for s in at.subheader)
+
+
+def test_insights_not_shown_on_error_path() -> None:
+    """Spec: insights-display — insights panel absent when error_message is set."""
+    data = {
+        "question": "Show dragon sales",
+        "generated_sql": None,
+        "query_result": None,
+        "error_message": "Unable to identify requested entities.",
+        "insights": ["This insight should not appear."],
+    }
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+    at.text_input[0].set_value("Show dragon sales")
+
+    with patch("httpx.post", return_value=_mock_response(data)):
+        at.button[0].click()
+        at.run()
+
+    assert len(at.warning) > 0
+    assert not any("Insights" in str(s.value) for s in at.subheader)
