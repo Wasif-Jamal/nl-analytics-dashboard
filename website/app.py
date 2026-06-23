@@ -20,11 +20,20 @@ st.title("Natural Language Analytics Dashboard")
 if "session_uuid" not in st.session_state:
     st.session_state.session_uuid = str(uuid.uuid4())
 
-question = st.text_input("Ask a question about your data")
-submitted = st.button("Submit")
+if "pending_question" not in st.session_state:
+    st.session_state.pending_question = ""
+
+pending = st.session_state.pending_question
+auto_submit = bool(pending)
+if auto_submit:
+    st.session_state.pending_question = ""
+
+question = st.text_input("Ask a question about your data", value=pending)
+submitted = st.button("Submit") or auto_submit
 
 if submitted:
-    if not question.strip():
+    effective_question = pending if auto_submit else question
+    if not effective_question.strip():
         st.info("Please enter a question")
     else:
         with st.spinner("Analyzing..."):
@@ -33,7 +42,7 @@ if submitted:
                     f"{API_BASE_URL}/api/chat",
                     json={
                         "session_uuid": st.session_state.session_uuid,
-                        "question": question,
+                        "question": effective_question,
                     },
                     timeout=60.0,
                 )
@@ -76,6 +85,13 @@ if submitted:
                         st.subheader("Insights")
                         for insight in insights:
                             st.markdown(f"- {insight}")
+                    followup_questions = data.get("followup_questions") or []
+                    if followup_questions:
+                        st.subheader("Suggested Questions")
+                        for q in followup_questions:
+                            if st.button(q, key=f"followup_{hash(q)}"):
+                                st.session_state.pending_question = q
+                                st.rerun()
             except httpx.ConnectError:
                 st.warning("Could not connect to the server. Please try again.")
             except httpx.RequestError:
