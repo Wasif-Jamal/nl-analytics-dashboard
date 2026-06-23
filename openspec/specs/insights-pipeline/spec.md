@@ -78,17 +78,21 @@ is unchanged.
 
 ### Requirement: stub-agents
 
-`VisualizationAgent` and `FollowupAgent` SHALL each be stub classes with a `.node(state)` method that returns an empty dict and MUST NOT mutate `WorkflowState`. Neither class SHALL call `create_agent()`. Placeholder prompt modules MUST be created at `app/prompts/visualization_prompt.py` and `app/prompts/followup_prompt.py`.
+`VisualizationAgent` in `app/agents/visualization_agent.py` SHALL be a stub class with
+a `.node(state)` method that returns an empty dict and MUST NOT mutate `WorkflowState`.
+It SHALL NOT call `create_agent()`. A placeholder prompt module MUST exist at
+`app/prompts/visualization_prompt.py`.
 
-#### Scenario: stub node invoked
-- **WHEN** the outer graph routes to `"visualization_agent"` or `"followup_agent"`
+`FollowupAgent` is no longer a stub. Its full implementation is defined by the
+`followup-agent` requirement in the `followup-pipeline` spec.
+
+#### Scenario: visualization stub node invoked
+- **WHEN** the outer graph routes to `"visualization_agent"`
 - **THEN** the stub's `.node()` method is called; it returns `{}`; `WorkflowState` is unchanged; the node terminates normally
 
-#### Scenario: placeholder prompt files exist
+#### Scenario: placeholder prompt file exists
 - **WHEN** the project is checked out
-- **THEN** `app/prompts/visualization_prompt.py` and `app/prompts/followup_prompt.py` exist and export a prompt constant (may be an empty string)
-
----
+- **THEN** `app/prompts/visualization_prompt.py` exists and exports a prompt constant (may be an empty string)
 
 ### Requirement: parallel-analysis-graph
 
