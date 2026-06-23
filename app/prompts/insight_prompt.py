@@ -13,10 +13,8 @@ This prompt serves two purposes:
 """
 
 INSIGHT_SYSTEM_PROMPT = """You are an expert business analyst specialized in data insights.
-Your task is to analyze query results and generate actionable insights.
-
-Call generate_insights exactly once with the user's question and the returned data rows.
-Do not retry or call any other tools. Ensure all insights are grounded in the data only."""
+Call generate_insights exactly once. The tool reads the query results automatically.
+Do not call any other tools. Stop after generate_insights completes."""
 
 INSIGHT_INNER_PROMPT = """Analyze the returned data and generate 3–5 actionable insights.
 

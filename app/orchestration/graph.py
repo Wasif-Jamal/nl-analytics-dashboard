@@ -89,7 +89,7 @@ class AnalyticsGraph:
         builder = StateGraph(WorkflowState)
         builder.add_node("sql_agent", sql_agent._agent)
         builder.add_node("visualization_agent", viz_agent.node)
-        builder.add_node("insight_agent", insight_agent._agent)
+        builder.add_node("insight_agent", insight_agent.node)
         builder.add_node("followup_agent", followup_agent.node)
 
         builder.set_entry_point("sql_agent")

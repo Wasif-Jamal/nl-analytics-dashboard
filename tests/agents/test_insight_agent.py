@@ -140,15 +140,45 @@ def test_generate_insights_llm_exception():
 
 
 # ---------------------------------------------------------------------------
-# InsightAgent — compilation
+# InsightAgent — compilation and node
 # ---------------------------------------------------------------------------
 
 
 def test_insight_agent_compiles():
-    """InsightAgent._agent is a CompiledStateGraph."""
+    """InsightAgent._agent is a CompiledStateGraph with InsightAgentState."""
     llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
     agent = InsightAgent(llm)
     assert isinstance(agent._agent, CompiledStateGraph)
+
+
+def test_insight_agent_node_invokes_agent_with_fresh_state():
+    """node() calls _agent.invoke with fresh messages and returns only insights."""
+    from unittest.mock import patch
+
+    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
+    agent = InsightAgent(llm)
+
+    mock_result = {
+        "messages": [],
+        "insights": ["East leads sales.", "Margin dipped in Q3."],
+        "question": "Show sales by region",
+        "query_result": None,
+    }
+    outer_state = {
+        "question": "Show sales by region",
+        "query_result": _QUERY_RESULT,
+        "messages": [],
+    }
+
+    with patch.object(agent._agent, "invoke", return_value=mock_result) as mock_invoke:
+        result = agent.node(outer_state)
+
+    assert result == {"insights": ["East leads sales.", "Margin dipped in Q3."]}
+    call_input = mock_invoke.call_args[0][0]
+    # Fresh context: exactly one HumanMessage, not the outer SQL history
+    assert len(call_input["messages"]) == 1
+    assert call_input["question"] == "Show sales by region"
+    assert call_input["query_result"] is _QUERY_RESULT
 
 
 def test_insight_tools_attribute_set():
