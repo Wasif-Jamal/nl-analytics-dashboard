@@ -6,18 +6,22 @@ TBD - created by archiving change insights-generation. Update Purpose after arch
 ### Requirement: insight-agent
 
 `InsightAgent` in `app/agents/insight_agent.py` SHALL be a `create_agent()` instance
-whose compiled agent is exposed via `self._agent` and added to the outer `StateGraph`
-as a subgraph node named `"insight_agent"`. Its sole internal tool is `generate_insights`
-(defined in `InsightTools`). The agent SHALL use `INSIGHT_SYSTEM_PROMPT` from
-`app/prompts/insight_prompt.py` and `state_schema=WorkflowState`.
+whose compiled agent is exposed via `self._agent` and uses a private `InsightAgentState`
+(a `MessagesState` subclass with `question`, `query_result`, `insights`). The agent
+SHALL use `INSIGHT_SYSTEM_PROMPT` from `app/prompts/insight_prompt.py` and
+`state_schema=InsightAgentState`. A `node(state: WorkflowState) -> dict` method SHALL
+bridge the outer state to the inner state: it constructs a fresh `InsightAgentState`
+(with a single `HumanMessage` trigger) so the model starts with a clean context,
+invokes `self._agent`, and returns only `{"insights": ...}`. The outer `StateGraph`
+registers `insight_agent.node` (a function node), NOT `insight_agent._agent` directly.
 
 #### Scenario: supervisor routes to InsightAgent
 - **WHEN** the outer graph routes to `"insight_agent"` after a successful SQL Agent run
-- **THEN** `InsightAgent._agent` is invoked as a subgraph node; its internal tool `generate_insights` is invisible to the outer graph
+- **THEN** `InsightAgent.node()` is called; it invokes `_agent` with a fresh `InsightAgentState`; the model sees only a single HumanMessage (not the prior SQL conversation); `generate_insights` is invisible to the outer graph
 
 #### Scenario: agent calls generate_insights once
-- **WHEN** `InsightAgent._agent` receives state with a non-empty `query_result`
-- **THEN** the LLM calls `generate_insights` exactly once; the result is written to `WorkflowState.insights` via `Command`
+- **WHEN** `InsightAgent.node()` is called with a non-empty `query_result` in `WorkflowState`
+- **THEN** the LLM calls `generate_insights` exactly once; `node()` propagates only `insights` back to `WorkflowState`
 
 ---
 
@@ -28,8 +32,11 @@ as a subgraph node named `"insight_agent"`. Its sole internal tool is `generate_
 `self.generate_insights` and passed directly to `create_agent`.
 
 `generate_insights` tool contract:
-- Reads `query_result` and `question` from `WorkflowState` using
-  `Annotated[WorkflowState, InjectedState()]` — the LLM does not pass rows as arguments.
+- Reads `query_result` and `question` via `Annotated[_InsightToolState, InjectedState()]`
+  where `_InsightToolState` is a `TypedDict(total=False)` declaring only those two fields.
+  Using the full `WorkflowState` type here would cause Pydantic validation errors because
+  the tool runs under the private `InsightAgentState`, not `WorkflowState`.
+  The LLM does not pass rows as arguments.
 - When `query_result` is set and `rows` is non-empty: makes a nested
   `llm.with_structured_output(InsightOutput)` call passing the original question and
   all rows serialized as JSON. Returns

@@ -129,7 +129,7 @@ After the SQL Agent succeeds the supervisor invokes the three analysis subagents
 Every agent class is a `create_agent()` instance built in `__init__`:
 1. `__init__`: stores injected deps (LLM, config); builds internal tools; calls `create_agent(model, tools=[...], system_prompt=..., state_schema=XAgentState)` to produce `self._agent`.
 2. Internal tools are `@tool`-decorated methods or closures on the agent class — invisible to the supervisor.
-3. The compiled agent is invoked by the supervisor as a subagent; it returns a `WorkflowState Command` with its results.
+3. A `node(state: WorkflowState) -> dict` method is registered in the outer `StateGraph`. For the SQL Agent, `_agent` is added directly as a subgraph node. For analysis agents (InsightAgent, VisualizationAgent, FollowupAgent), `node()` bridges the outer `WorkflowState` to the private `XAgentState` — it constructs a fresh inner state (so the model never inherits the SQL conversation history), invokes `self._agent`, and returns only the fields the outer graph needs.
 
 Each agent uses its own private `XAgentState` (a `TypedDict` or `MessagesState` subclass) — separate from the supervisor's `WorkflowState`.
 
