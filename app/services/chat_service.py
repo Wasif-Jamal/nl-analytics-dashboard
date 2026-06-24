@@ -114,6 +114,8 @@ class ChatService:
                 serialized_rows = query_result_obj.rows
                 columns = query_result_obj.columns
                 row_count = query_result_obj.row_count
+            chart_config_obj = result.get("chart_config")
+            chart_config = chart_config_obj.model_dump() if chart_config_obj else None
             # History mutations run in the event loop (after the await) —
             # single-threaded, no lock required.
             history = self._history.setdefault(request.session_uuid, [])
@@ -132,7 +134,7 @@ class ChatService:
                 query_result=serialized_rows,
                 columns=columns,
                 row_count=row_count,
-                chart_config=result.get("chart_config"),
+                chart_config=chart_config,
                 insights=result.get("insights"),
                 followup_questions=result.get("followup_questions"),
                 error_message=error_message,
