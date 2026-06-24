@@ -157,14 +157,21 @@ def test_successful_response_shows_dataframe() -> None:
     assert len(at.dataframe) > 0
 
 
-def test_single_scalar_result_shows_metric_not_dataframe() -> None:
-    """Single-column, single-row result — st.metric shown, no st.dataframe."""
+def test_single_scalar_result_shows_written_answer_not_dataframe() -> None:
+    """Single-column, single-row result with chart_config written_answer — st.info shown, no st.dataframe."""
     data = {
         "question": "How many customers do we have?",
         "generated_sql": "SELECT COUNT(DISTINCT customer_id) AS customer_count FROM customers",
         "query_result": [{"customer_count": 736}],
         "columns": ["customer_count"],
         "row_count": 1,
+        "chart_config": {
+            "chart_type": "table",
+            "x_column": None,
+            "y_column": None,
+            "title": "",
+            "written_answer": "Total distinct customers is 736.",
+        },
         "error_message": None,
         "session_history": ["How many customers do we have?"],
     }
@@ -177,8 +184,8 @@ def test_single_scalar_result_shows_metric_not_dataframe() -> None:
         at.button[0].click()
         at.run()
 
-    assert len(at.metric) == 1
-    assert at.metric[0].value == "736"
+    assert len(at.info) == 1
+    assert "736" in at.info[0].value
     assert len(at.dataframe) == 0
 
 
@@ -293,13 +300,20 @@ def test_csv_download_content_matches_query_result() -> None:
 
 
 def test_csv_download_button_absent_for_scalar_result() -> None:
-    """Spec: single-scalar result — st.metric shown, no download button rendered."""
+    """Spec: single-scalar result with written_answer — st.info shown, no download button."""
     data = {
         "question": "How many customers do we have?",
         "generated_sql": "SELECT COUNT(DISTINCT customer_id) AS customer_count FROM customers",
         "query_result": [{"customer_count": 736}],
         "columns": ["customer_count"],
         "row_count": 1,
+        "chart_config": {
+            "chart_type": "table",
+            "x_column": None,
+            "y_column": None,
+            "title": "",
+            "written_answer": "Total distinct customers is 736.",
+        },
         "error_message": None,
         "session_history": ["How many customers do we have?"],
     }
@@ -311,7 +325,7 @@ def test_csv_download_button_absent_for_scalar_result() -> None:
         at.button[0].click()
         at.run()
 
-    assert len(at.metric) == 1
+    assert len(at.info) == 1
     assert len(_download_buttons(at)) == 0
 
 
@@ -336,15 +350,62 @@ def test_csv_download_button_absent_without_results() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tests — spec: future-fields-ignored
+# Tests — spec: chart-display
 # ---------------------------------------------------------------------------
 
 
-def test_future_fields_in_response_produce_no_extra_ui() -> None:
-    """Spec: followup_questions and chart_config are silently ignored; no extra panels."""
+def test_chart_rendered_with_png_download_button() -> None:
+    """Spec: chart_type=bar + build_figure returns figure — no dataframe, Download PNG button rendered."""
+    data = {
+        "question": "Show sales by month",
+        "generated_sql": "SELECT month, SUM(sales) FROM orders GROUP BY month",
+        "query_result": [
+            {"month": "Jan", "sales": 1000},
+            {"month": "Feb", "sales": 1200},
+        ],
+        "columns": ["month", "sales"],
+        "row_count": 2,
+        "chart_config": {
+            "chart_type": "bar",
+            "x_column": "month",
+            "y_column": "sales",
+            "title": "Sales by Month",
+        },
+        "error_message": None,
+        "session_history": ["Show sales by month"],
+    }
+
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+    at.text_input[0].set_value("Show sales by month")
+
+    with (
+        patch("httpx.post", return_value=_mock_response(data)),
+        patch("plotly.io.to_image", return_value=b"fakepng"),
+    ):
+        at.button[0].click()
+        at.run()
+
+    # Chart path taken — dataframe and CSV download button absent
+    assert len(at.dataframe) == 0
+    assert len(_download_buttons(at)) == 0
+    # Download PNG button rendered
+    png_buttons = [
+        v
+        for v in at.main.children.values()
+        if isinstance(v, UnknownElement)
+        and getattr(v.proto, "label", "") == "Download PNG"
+    ]
+    assert len(png_buttons) == 1
+    assert len(at.warning) == 0
+
+
+def test_all_active_response_fields_rendered() -> None:
+    """Spec: chart_config + insights + followup_questions all rendered, none dropped."""
     data = _success_data()
+    data["chart_config"] = {"chart_type": "table", "title": ""}
+    data["insights"] = ["Sales peaked in January."]
     data["followup_questions"] = ["What drove January sales?"]
-    data["chart_config"] = {"type": "bar", "x": "month", "y": "sales"}
 
     at = AppTest.from_file(APP_PATH)
     at.run()
@@ -354,7 +415,36 @@ def test_future_fields_in_response_produce_no_extra_ui() -> None:
         at.button[0].click()
         at.run()
 
-    # SQL expander and dataframe rendered; no extra panels for ignored fields.
+    # chart_config=table → dataframe rendered
+    assert len(at.dataframe) == 1
+    # insights rendered
+    assert any("Insights" in str(s.value) for s in at.subheader)
+    assert any("Sales peaked in January." in str(m.value) for m in at.markdown)
+    # followup_questions rendered as Suggested Questions
+    assert any("Suggested Questions" in str(s.value) for s in at.subheader)
+    assert len(at.warning) == 0
+
+
+# ---------------------------------------------------------------------------
+# Tests — spec: future-fields-ignored
+# ---------------------------------------------------------------------------
+
+
+def test_chart_config_table_falls_back_to_dataframe() -> None:
+    """Spec: chart_type=table with no written_answer renders dataframe; followup_questions shown as buttons."""
+    data = _success_data()
+    data["followup_questions"] = ["What drove January sales?"]
+    data["chart_config"] = {"chart_type": "table", "title": ""}
+
+    at = AppTest.from_file(APP_PATH)
+    at.run()
+    at.text_input[0].set_value("Show monthly sales")
+
+    with patch("httpx.post", return_value=_mock_response(data)):
+        at.button[0].click()
+        at.run()
+
+    # SQL expander and dataframe rendered; no errors.
     assert len(at.expander) == 1
     assert len(at.dataframe) == 1
     assert len(at.warning) == 0

@@ -59,14 +59,19 @@ def test_sql_agent_is_registered_as_subgraph():
     assert isinstance(pregel_node.subgraphs[0], CompiledStateGraph)
 
 
-def test_visualization_stub_node_is_non_fatal():
-    """VisualizationAgent stub .node() returns {} and cannot raise."""
+def test_visualization_agent_node_is_non_fatal():
+    """VisualizationAgent.node() returns chart_config result without raising."""
+    from unittest.mock import MagicMock
+
     from app.agents.visualization_agent import VisualizationAgent
 
-    llm = ChatGoogleGenerativeAI(model="gemini-2.0-flash", google_api_key="test-key")
-    state: dict = {"question": "q", "messages": []}
+    mock_llm = MagicMock()
+    agent = VisualizationAgent(mock_llm)
+    agent._agent = MagicMock()
+    agent._agent.invoke.return_value = {"chart_config": None}
 
-    assert VisualizationAgent(llm).node(state) == {}
+    state: dict = {"question": "q", "messages": [], "query_result": None}
+    assert agent.node(state) == {"chart_config": None}
 
 
 def test_database_access_boundary():
