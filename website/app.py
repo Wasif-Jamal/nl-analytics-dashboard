@@ -10,6 +10,7 @@ from datetime import datetime
 
 import httpx
 import pandas as pd
+import plotly.express as px
 import streamlit as st
 
 API_BASE_URL = "http://localhost:8000"
@@ -27,6 +28,66 @@ pending = st.session_state.pending_question
 auto_submit = bool(pending)
 if auto_submit:
     st.session_state.pending_question = ""
+
+
+_CHART_TYPES = {"bar", "line", "pie", "scatter"}
+
+
+def _build_figure(chart_config: dict, rows: list[dict]):
+    """Build a Plotly figure from the chart_config dict and query rows.
+
+    Mirrors the logic of ``app.utils.chart_helpers.build_figure`` but operates
+    on the plain dict returned by the API so ``website/app.py`` does not need to
+    import from the ``app`` package (Streamlit places ``website/`` first on
+    ``sys.path``, which would shadow the ``app`` package with this script).
+
+    Returns a Plotly Figure or None.
+    """
+    chart_type = chart_config.get("chart_type")
+    if chart_type not in _CHART_TYPES or not rows:
+        return None
+    x_col = chart_config.get("x_column")
+    y_col = chart_config.get("y_column")
+    title = chart_config.get("title", "")
+    if x_col and x_col not in rows[0]:
+        return None
+    if y_col and y_col not in rows[0]:
+        return None
+    try:
+        df = pd.DataFrame(rows)
+        if chart_type == "bar":
+            return px.bar(df, x=x_col, y=y_col, title=title)
+        if chart_type == "line":
+            return px.line(df, x=x_col, y=y_col, title=title)
+        if chart_type == "pie":
+            return px.pie(df, names=x_col, values=y_col, title=title)
+        if chart_type == "scatter":
+            return px.scatter(df, x=x_col, y=y_col, title=title)
+    except Exception:
+        return None
+    return None
+
+
+def _render_dataframe(query_result: list[dict], columns: list, row_count: int) -> None:
+    """Render a dataframe with CSV download for multi-row results.
+
+    Args:
+        query_result: Rows as list of dicts from the API response.
+        columns: Ordered column names.
+        row_count: Number of rows returned.
+    """
+    if not query_result:
+        return
+    st.dataframe(query_result, width="stretch", height=400)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    csv_bytes = pd.DataFrame(query_result).to_csv(index=False).encode("utf-8")
+    st.download_button(
+        label="Download CSV",
+        data=csv_bytes,
+        file_name=f"query_results_{timestamp}.csv",
+        mime="text/csv",
+    )
+
 
 question = st.text_input("Ask a question about your data", value=pending)
 submitted = st.button("Submit") or auto_submit
@@ -55,31 +116,43 @@ if submitted:
                     if generated_sql:
                         with st.expander("Generated SQL"):
                             st.code(generated_sql, language="sql")
-                    query_result = data.get("query_result")
+
+                    query_result = data.get("query_result") or []
                     columns = data.get("columns") or []
                     row_count = data.get("row_count") or 0
-                    if query_result:
-                        if row_count == 1 and len(columns) == 1:
-                            value = query_result[0][columns[0]]
-                            st.metric(label=columns[0], value=value)
+                    chart_config_dict = data.get("chart_config")
+
+                    if chart_config_dict:
+                        written_answer = chart_config_dict.get("written_answer")
+                        chart_type = chart_config_dict.get("chart_type")
+
+                        if written_answer:
+                            # Single-value path: LLM-generated plain-language sentence
+                            st.info(written_answer)
+
+                        elif chart_type in _CHART_TYPES:
+                            # Chart path: build and render Plotly figure
+                            fig = _build_figure(chart_config_dict, query_result)
+                            if fig:
+                                st.plotly_chart(fig, width="stretch")
+                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                                st.download_button(
+                                    label="Download PNG",
+                                    data=fig.to_image(format="png"),
+                                    file_name=f"chart_{timestamp}.png",
+                                    mime="image/png",
+                                )
+                            else:
+                                _render_dataframe(query_result, columns, row_count)
+
                         else:
-                            st.dataframe(
-                                query_result,
-                                width="stretch",
-                                height=400,
-                            )
-                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                            csv_bytes = (
-                                pd.DataFrame(query_result)
-                                .to_csv(index=False)
-                                .encode("utf-8")
-                            )
-                            st.download_button(
-                                label="Download CSV",
-                                data=csv_bytes,
-                                file_name=f"query_results_{timestamp}.csv",
-                                mime="text/csv",
-                            )
+                            # Table-only path (chart_type="table", no written_answer)
+                            _render_dataframe(query_result, columns, row_count)
+
+                    elif query_result:
+                        # Fallback: chart_config absent — use dataframe
+                        _render_dataframe(query_result, columns, row_count)
+
                     insights = data.get("insights") or []
                     if insights:
                         st.subheader("Insights")
