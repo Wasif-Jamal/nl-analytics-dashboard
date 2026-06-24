@@ -11,6 +11,7 @@ from typing import Optional
 
 from langgraph.graph import MessagesState
 
+from app.schemas.chart_config import ChartConfig
 from app.schemas.sql_result import QueryResult
 
 
@@ -19,17 +20,17 @@ class WorkflowState(MessagesState):
 
     Inherits ``messages`` (the ReAct conversation history) from ``MessagesState``.
     The SQL pipeline populates ``question``, ``generated_sql``, ``sql_explanation``,
-    ``query_result``, and ``error_message``; the remaining fields are placeholders
-    populated by the analysis tools added in later issues (#5, #6, #7).
+    ``query_result``, and ``error_message``; the analysis agents populate
+    ``chart_config``, ``insights``, and ``followup_questions``.
 
     Attributes:
         question: The user's natural-language question.
         generated_sql: The SQL produced by the SQL agent.
         sql_explanation: Plain-English explanation of the generated SQL.
         query_result: Executed query result (rows as list[dict] + metadata).
-        chart_config: Visualization config (issue #5).
-        insights: Generated insights (issue #6).
-        followup_questions: Suggested follow-up questions (issue #7).
+        chart_config: Typed visualization config from the VisualizationAgent.
+        insights: Generated insights from the InsightAgent.
+        followup_questions: Suggested follow-up questions from the FollowupAgent.
         error_message: Standard user-facing error message, if any step failed.
     """
 
@@ -37,7 +38,7 @@ class WorkflowState(MessagesState):
     generated_sql: Optional[str]
     sql_explanation: Optional[str]
     query_result: Optional[QueryResult]
-    chart_config: Optional[dict]
+    chart_config: Optional[ChartConfig]
     insights: Optional[list[str]]
     followup_questions: Optional[list[str]]
     error_message: Optional[str]
