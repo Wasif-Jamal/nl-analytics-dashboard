@@ -40,11 +40,11 @@ def client(mock_service: MagicMock) -> TestClient:
 
 
 def _success_response(question: str = "Show monthly sales") -> AnalyticsResponse:
-    return AnalyticsResponse(question=question, session_history=[question])
+    return AnalyticsResponse(question=question)
 
 
 def _error_response(question: str, msg: str) -> AnalyticsResponse:
-    return AnalyticsResponse(question=question, error_message=msg, session_history=[])
+    return AnalyticsResponse(question=question, error_message=msg)
 
 
 # ---------------------------------------------------------------------------
@@ -142,18 +142,15 @@ def test_workflow_error_is_http_200(
     assert "Unable to identify requested entities." in resp.json()["error_message"]
 
 
-def test_session_history_returned_in_response(
+def test_session_history_absent_from_response(
     client: TestClient, mock_service: MagicMock
 ) -> None:
-    """Spec: response schema — session_history list is present in the payload."""
-    mock_service.ask.return_value = AnalyticsResponse(
-        question="Q",
-        session_history=["prev Q", "Q"],
-    )
+    """Spec: response schema — session_history is no longer echoed back (FR-11)."""
+    mock_service.ask.return_value = AnalyticsResponse(question="Q")
     resp = client.post("/api/chat", json={"question": "Q", "session_uuid": "s1"})
 
     assert resp.status_code == 200
-    assert resp.json()["session_history"] == ["prev Q", "Q"]
+    assert "session_history" not in resp.json()
 
 
 def test_no_data_error_propagated_through_route(

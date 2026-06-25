@@ -21,12 +21,10 @@ st.title("Natural Language Analytics Dashboard")
 if "session_uuid" not in st.session_state:
     st.session_state.session_uuid = str(uuid.uuid4())
 
-if "pending_question" not in st.session_state:
-    st.session_state.pending_question = ""
+if "turns" not in st.session_state:
+    st.session_state.turns = []  # list of turn dicts: {question, ...response fields}
 
-pending = st.session_state.pending_question
-auto_submit = bool(pending)
-if auto_submit:
+if "pending_question" not in st.session_state:
     st.session_state.pending_question = ""
 
 
@@ -68,13 +66,16 @@ def _build_figure(chart_config: dict, rows: list[dict]):
     return None
 
 
-def _render_dataframe(query_result: list[dict], columns: list, row_count: int) -> None:
+def _render_dataframe(
+    query_result: list[dict], columns: list, row_count: int, turn_idx: int | str
+) -> None:
     """Render a dataframe with CSV download for multi-row results.
 
     Args:
         query_result: Rows as list of dicts from the API response.
         columns: Ordered column names.
         row_count: Number of rows returned.
+        turn_idx: Unique identifier for this turn (used in widget keys).
     """
     if not query_result:
         return
@@ -86,85 +87,109 @@ def _render_dataframe(query_result: list[dict], columns: list, row_count: int) -
         data=csv_bytes,
         file_name=f"query_results_{timestamp}.csv",
         mime="text/csv",
+        key=f"csv_{turn_idx}",
     )
 
 
-question = st.text_input("Ask a question about your data", value=pending)
-submitted = st.button("Submit") or auto_submit
+def _render_answer(data: dict, turn_idx: int | str) -> None:
+    """Render one assistant turn: chart/written answer, dataframe, insights, follow-ups.
 
-if submitted:
-    effective_question = pending if auto_submit else question
-    if not effective_question.strip():
-        st.info("Please enter a question")
-    else:
+    Args:
+        data: API response JSON dict for this turn.
+        turn_idx: Unique identifier for this turn (used to namespace widget keys).
+    """
+    error_message = data.get("error_message")
+    if error_message:
+        st.warning(error_message)
+        return
+
+    generated_sql = data.get("generated_sql")
+    if generated_sql:
+        with st.expander("Generated SQL"):
+            st.code(generated_sql, language="sql")
+
+    query_result = data.get("query_result") or []
+    columns = data.get("columns") or []
+    row_count = data.get("row_count") or 0
+    chart_config_dict = data.get("chart_config")
+
+    if chart_config_dict:
+        written_answer = chart_config_dict.get("written_answer")
+        chart_type = chart_config_dict.get("chart_type")
+
+        if written_answer:
+            st.info(written_answer)
+
+        elif chart_type in _CHART_TYPES:
+            fig = _build_figure(chart_config_dict, query_result)
+            if fig:
+                st.plotly_chart(fig, width="stretch")
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                st.download_button(
+                    label="Download PNG",
+                    data=fig.to_image(format="png"),
+                    file_name=f"chart_{timestamp}.png",
+                    mime="image/png",
+                    key=f"png_{turn_idx}",
+                )
+            else:
+                _render_dataframe(query_result, columns, row_count, turn_idx)
+
+        else:
+            _render_dataframe(query_result, columns, row_count, turn_idx)
+
+    elif query_result:
+        _render_dataframe(query_result, columns, row_count, turn_idx)
+
+    insights = data.get("insights") or []
+    if insights:
+        st.subheader("Insights")
+        for insight in insights:
+            st.markdown(f"- {insight}")
+
+    followup_questions = data.get("followup_questions") or []
+    if followup_questions:
+        st.subheader("Suggested Questions")
+        for q in followup_questions:
+            if st.button(q, key=f"followup_{turn_idx}_{hash(q)}"):
+                st.session_state.pending_question = q
+                st.rerun()
+
+
+# Render all previously completed turns oldest-to-newest.
+for turn_idx, turn in enumerate(st.session_state.turns):
+    with st.chat_message("user"):
+        st.markdown(turn["question"])
+    with st.chat_message("assistant"):
+        _render_answer(turn, turn_idx)
+
+# st.chat_input is always rendered (widget stays visible even for pending questions).
+# If a follow-up button was clicked, pending_question overrides the chat input value.
+question = st.chat_input("Ask a question about your data")
+pending = st.session_state.pending_question
+if pending:
+    st.session_state.pending_question = ""
+    question = pending
+
+if question:
+    with st.chat_message("user"):
+        st.markdown(question)
+
+    with st.chat_message("assistant"):
         with st.spinner("Analyzing..."):
             try:
                 response = httpx.post(
                     f"{API_BASE_URL}/api/chat",
                     json={
                         "session_uuid": st.session_state.session_uuid,
-                        "question": effective_question,
+                        "question": question,
                     },
                     timeout=60.0,
                 )
                 data = response.json()
-                error_message = data.get("error_message")
-                if error_message:
-                    st.warning(error_message)
-                else:
-                    generated_sql = data.get("generated_sql")
-                    if generated_sql:
-                        with st.expander("Generated SQL"):
-                            st.code(generated_sql, language="sql")
-
-                    query_result = data.get("query_result") or []
-                    columns = data.get("columns") or []
-                    row_count = data.get("row_count") or 0
-                    chart_config_dict = data.get("chart_config")
-
-                    if chart_config_dict:
-                        written_answer = chart_config_dict.get("written_answer")
-                        chart_type = chart_config_dict.get("chart_type")
-
-                        if written_answer:
-                            # Single-value path: LLM-generated plain-language sentence
-                            st.info(written_answer)
-
-                        elif chart_type in _CHART_TYPES:
-                            # Chart path: build and render Plotly figure
-                            fig = _build_figure(chart_config_dict, query_result)
-                            if fig:
-                                st.plotly_chart(fig, width="stretch")
-                                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                                st.download_button(
-                                    label="Download PNG",
-                                    data=fig.to_image(format="png"),
-                                    file_name=f"chart_{timestamp}.png",
-                                    mime="image/png",
-                                )
-                            else:
-                                _render_dataframe(query_result, columns, row_count)
-
-                        else:
-                            # Table-only path (chart_type="table", no written_answer)
-                            _render_dataframe(query_result, columns, row_count)
-
-                    elif query_result:
-                        # Fallback: chart_config absent — use dataframe
-                        _render_dataframe(query_result, columns, row_count)
-
-                    insights = data.get("insights") or []
-                    if insights:
-                        st.subheader("Insights")
-                        for insight in insights:
-                            st.markdown(f"- {insight}")
-                    followup_questions = data.get("followup_questions") or []
-                    if followup_questions:
-                        st.subheader("Suggested Questions")
-                        for q in followup_questions:
-                            if st.button(q, key=f"followup_{hash(q)}"):
-                                st.session_state.pending_question = q
-                                st.rerun()
+                new_turn_idx = len(st.session_state.turns)
+                _render_answer(data, new_turn_idx)
+                st.session_state.turns.append({**data, "question": question})
             except httpx.ConnectError:
                 st.warning("Could not connect to the server. Please try again.")
             except httpx.RequestError:

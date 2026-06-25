@@ -16,6 +16,9 @@ Do not call any other tools. Stop after select_visualization completes."""
 VISUALIZATION_INNER_PROMPT = """Select the best visualization for the returned data.
 
 User's question: {question}
+
+{conversation_history}
+
 Columns: {columns}
 Row count: {row_count}
 Sample data (up to 10 rows, JSON):

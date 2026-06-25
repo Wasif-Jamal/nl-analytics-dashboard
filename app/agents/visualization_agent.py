@@ -28,6 +28,7 @@ from app.config.log_config import config as log_config
 from app.orchestration.state import WorkflowState
 from app.prompts.visualization_prompt import VISUALIZATION_SYSTEM_PROMPT
 from app.schemas.chart_config import ChartConfig
+from app.schemas.conversation import ConversationTurn
 from app.schemas.sql_result import QueryResult
 from app.tools.visualization_tools import VisualizationTools
 
@@ -45,12 +46,15 @@ class VisualizationAgentState(MessagesState):
         question: The user's natural-language question.
         query_result: Executed query result read by ``select_visualization`` via
             ``InjectedState``.
+        conversation_history: Prior successful turns for the current session,
+            forwarded from ``WorkflowState`` by ``node()``.
         chart_config: Populated by ``select_visualization``; propagated to
             ``WorkflowState`` by ``node()``.
     """
 
     question: str
     query_result: Optional[QueryResult]
+    conversation_history: Optional[list[ConversationTurn]]
     chart_config: Optional[ChartConfig]
 
 
@@ -106,6 +110,7 @@ class VisualizationAgent:
                 "messages": [HumanMessage(content="Select the best visualization.")],
                 "question": state.get("question", ""),
                 "query_result": state.get("query_result"),
+                "conversation_history": state.get("conversation_history") or [],
             }
         )
         return {"chart_config": result.get("chart_config")}
