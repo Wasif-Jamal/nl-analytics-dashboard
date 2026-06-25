@@ -106,7 +106,7 @@ Boundary rules (enforce these):
 
 *(The backend is exposed over HTTP via FastAPI (`app/routes/`), with request/response models in `app/schemas/`. Internally, the contract is the workflow state + the typed `Command` each tool returns. Routes delegate to the Chat Service, which runs the `create_agent` graph.)*
 
-**Workflow state fields:** `WorkflowState` subclasses `MessagesState` (so `messages` + its reducer come for free) and adds: `question`, `generated_sql`, `sql_explanation`, `query_result`, `chart_config`, `insights`, `followup_questions`, `error_message`.
+**Workflow state fields:** `WorkflowState` subclasses `MessagesState` (so `messages` + its reducer come for free) and adds: `question`, `generated_sql`, `sql_explanation`, `query_result`, `chart_config`, `insights`, `followup_questions`, `error_message`, `conversation_history`. The Chat Service injects only the current session's prior turns into `conversation_history` before each run so all four agents have multi-turn context (`question` + `generated_sql` + `insights`; the Follow-Up Agent additionally receives prior `followup_questions`; result rows are not included). See `docs/issues/09-conversation-history.md`.
 
 **Agent loop:**
 ```

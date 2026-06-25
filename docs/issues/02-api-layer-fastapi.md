@@ -2,7 +2,7 @@
 
 Expose the analytics workflow over an HTTP API built with FastAPI, so the Streamlit UI (and any other client) submits questions and receives responses through well-defined endpoints. A Chat Service bridges the API and the LangGraph workflow. This is the design/infrastructure layer that carries FR-1 (submit questions) and response delivery. Source: SDS §9.3; `decisions/technical_architecture.md` §15.
 
-> The Chat Service invokes the compiled `create_agent` graph produced by `AnalyticsGraph.build()` (issue #1) and manages in-memory session history. The Streamlit UI (issue #3) consumes this API rather than invoking the workflow in-process.
+> The Chat Service invokes the compiled `create_agent` graph produced by `AnalyticsGraph.build()` (issue #1) and manages in-memory per-session conversation history, injecting the current session's prior turns as context before each run (issue #9). The Streamlit UI (issue #3) consumes this API rather than invoking the workflow in-process.
 
 ## Acceptance Criteria
 
@@ -11,7 +11,7 @@ Expose the analytics workflow over an HTTP API built with FastAPI, so the Stream
 3. Request and response payloads are validated by the Pydantic schemas in `app/schemas/requests` and `app/schemas/responses`.
 4. Routes contain no business logic — they delegate to the Chat Service (`app/services/chat_service.py`).
 5. The Chat Service invokes the compiled `create_agent` graph (issue #1) and returns the aggregated response; domain services remain independent of LangGraph.
-6. The Chat Service maintains an in-memory `dict[session_uuid → list[question]]` history; successfully answered questions are appended, errored ones are not.
+6. The Chat Service maintains an in-memory `dict[session_uuid → list[ConversationTurn]]` history; successfully answered turns are appended, errored ones are not. Before each run it injects only that session's prior turns into the workflow as multi-turn context (issue #9).
 
 ## Error Scenarios
 

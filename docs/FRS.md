@@ -124,8 +124,8 @@ The system proposes a few relevant **follow-up questions** based on the current 
 ### 6.6 Tabular View
 Raw query results in table format, with **pagination** (implemented via Streamlit's native virtual scrolling), **sorting**, and **download**. The single-scalar result (1 row × 1 column, presented as a metric) does not include a download button.
 
-### 6.7 Query History
-Session-level history of user questions: view previously executed questions and re-run them.
+### 6.7 Conversation History
+Session-level, in-memory conversation: each question and its answer are kept for the active session, rendered in a chat layout (oldest at the top, newest at the bottom), and the prior turns of that session are fed back to the agents as context so follow-up questions can build on earlier answers. History is keyed by a session UUID, is never persisted, and is never shared across sessions.
 
 ---
 
@@ -133,14 +133,14 @@ Session-level history of user questions: view previously executed questions and 
 
 | Component | Description |
 |---|---|
-| **Question Input** | Enter natural-language requests (e.g. "Show monthly revenue trend for 2025") |
-| **Execute Button** | Triggers processing |
+| **Chat Input** | A chat box fixed at the bottom of the page for entering natural-language requests (e.g. "Show monthly revenue trend for 2025"); submitting it adds a new turn to the conversation |
+| **Send Action** | Submitting the chat box (Enter / send) triggers processing of the typed question |
 | **SQL Display** | Shows generated SQL — for transparency, debugging, validation |
 | **Results Table** | Displays returned records |
 | **Visualization Area** | Displays a chart, or a written-answer panel when the result is a single value |
 | **Insights Panel** | Displays plain-language insights derived from the returned data |
 | **Suggested Questions** | Displays clickable follow-up questions that re-run as new queries |
-| **Query History Panel** | Displays previously executed requests |
+| **Conversation View** | Renders the full session conversation top-to-bottom — each question followed by its answer (SQL, results table, chart or written answer, insights, suggested follow-ups) |
 
 ---
 
@@ -160,7 +160,7 @@ This table is the canonical functional-requirement register. IDs are stable and 
 | FR-8 | System shall present single-value results as a plain-language sentence |
 | FR-9 | System shall generate actionable insights grounded in the returned data |
 | FR-10 | System shall suggest relevant follow-up questions that can be run with one click |
-| FR-11 | System shall maintain query history during the active session |
+| FR-11 | System shall maintain a session-level conversation history and use the current session's prior turns as context for follow-up questions |
 | FR-12 | Users shall be able to export query results as CSV |
 
 ---
@@ -230,6 +230,6 @@ The project is complete when:
 - **Insights** — Actionable insights are generated and grounded in the returned data.
 - **Next questions** — Relevant follow-up questions are suggested and runnable with one click.
 - **Results** — Data table is displayed; CSV export works.
-- **User Experience** — Query history is available; errors are displayed clearly.
+- **User Experience** — The session conversation is rendered in chat style and prior turns provide follow-up context; errors are displayed clearly.
 - **Security** — Non-read-only SQL statements are blocked.
 - **Documentation** — Requirements, data contracts, workflow, validation rules, and acceptance criteria are documented.
