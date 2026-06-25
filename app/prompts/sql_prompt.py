@@ -10,6 +10,12 @@ This prompt serves two purposes:
   uses the DATABASE SCHEMA and SQL RULES sections to produce valid SQL.
 """
 
+SQL_HISTORY_TEMPLATE = """
+== PRIOR CONVERSATION TURNS (use to resolve follow-ups and relative references) ==
+
+{conversation_history}
+"""
+
 SQL_SYSTEM_PROMPT = """You are an expert SQL analyst for the Superstore business database. \
 Your mandatory workflow for every question is:
 

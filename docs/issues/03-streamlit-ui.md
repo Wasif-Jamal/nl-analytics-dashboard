@@ -27,6 +27,6 @@ A Streamlit web UI (`website/app.py`) where business users type a natural-langua
 - Charts and visualizations (issue #5).
 - Insights panel (issue #6).
 - Suggested follow-up questions (issue #7).
-- Query history panel (issue #8).
+- Conversation history & chat layout (issue #9).
 - CSV export (issue #4).
 - Authentication / authorization (FRS §13).

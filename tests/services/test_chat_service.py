@@ -13,6 +13,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from app.schemas.conversation import ConversationTurn
 from app.schemas.requests import AnalyticsRequest
 from app.schemas.sql_result import QueryResult
 from app.services.chat_service import ChatService
@@ -85,6 +86,7 @@ def test_success_returns_populated_response(
     assert resp.generated_sql == "SELECT 1"
     assert resp.sql_explanation == "Counts everything."
     assert resp.question == "Show monthly sales"
+    assert not hasattr(resp, "session_history")
 
 
 def test_workflow_error_propagated(service: ChatService, mock_graph: MagicMock) -> None:
@@ -118,62 +120,78 @@ def test_exception_error_message_is_standard_string(
 
 
 # ---------------------------------------------------------------------------
-# Tests — spec: session-history
+# Tests — spec: session-history / conversation-context-injection
 # ---------------------------------------------------------------------------
 
 
-def test_first_question_appended_to_history(
+def test_graph_invoked_with_empty_conversation_history(
     service: ChatService, mock_graph: MagicMock
 ) -> None:
-    """Spec: first question in a new session — history contains exactly one entry."""
+    """Spec: first question in a session — graph receives conversation_history=[]."""
     mock_graph.invoke.return_value = _make_state()
-    resp = _run(service.ask(_make_request(question="Q1", session="new-sess")))
+    _run(service.ask(_make_request()))
 
-    assert resp.session_history == ["Q1"]
+    call_kwargs = mock_graph.invoke.call_args[0][0]
+    assert call_kwargs["conversation_history"] == []
 
 
-def test_subsequent_questions_accumulate(
+def test_conversation_turn_appended_on_success(
     service: ChatService, mock_graph: MagicMock
 ) -> None:
-    """Spec: subsequent questions in the same session — both appended in order."""
-    mock_graph.invoke.return_value = _make_state()
-    _run(service.ask(_make_request(question="Q1", session="s")))
-    resp = _run(service.ask(_make_request(question="Q2", session="s")))
+    """Spec: successful workflow — ConversationTurn appended to in-memory history."""
+    mock_graph.invoke.return_value = _make_state(
+        generated_sql="SELECT 1", insights=["Insight A"]
+    )
+    _run(service.ask(_make_request(session="sess-a")))
 
-    assert resp.session_history == ["Q1", "Q2"]
+    history = service._history.get("sess-a", [])
+    assert len(history) == 1
+    assert isinstance(history[0], ConversationTurn)
+    assert history[0].question == "Show monthly sales"
+    assert history[0].generated_sql == "SELECT 1"
+    assert history[0].insights == ["Insight A"]
 
 
-def test_workflow_error_not_appended_to_history(
+def test_conversation_turn_not_appended_on_error(
     service: ChatService, mock_graph: MagicMock
 ) -> None:
-    """Spec: errored question is not appended — history unchanged on error."""
+    """Spec: workflow error — errored turn is NOT appended to history."""
     mock_graph.invoke.return_value = _make_state(error_message=_ERR_UNIDENTIFIED)
-    resp = _run(service.ask(_make_request(question="bad Q", session="s2")))
+    _run(service.ask(_make_request(session="sess-err")))
 
-    assert resp.session_history == []
+    assert service._history.get("sess-err", []) == []
 
 
-def test_error_does_not_pollute_existing_history(
+def test_prior_turn_injected_on_second_call(
     service: ChatService, mock_graph: MagicMock
 ) -> None:
-    """Spec: one success then one workflow error — history has only the first."""
-    mock_graph.invoke.return_value = _make_state()
-    _run(service.ask(_make_request(question="Good Q", session="s3")))
+    """Spec: multi-turn — second call receives prior successful turn in conversation_history."""
+    mock_graph.invoke.return_value = _make_state(generated_sql="SELECT 1")
+    _run(service.ask(_make_request(question="First question", session="sess-b")))
 
-    mock_graph.invoke.return_value = _make_state(error_message=_ERR_UNIDENTIFIED)
-    resp = _run(service.ask(_make_request(question="Bad Q", session="s3")))
+    mock_graph.invoke.return_value = _make_state(generated_sql="SELECT 2")
+    _run(service.ask(_make_request(question="Second question", session="sess-b")))
 
-    assert resp.session_history == ["Good Q"]
+    second_call_kwargs = mock_graph.invoke.call_args_list[1][0][0]
+    history_passed = second_call_kwargs["conversation_history"]
+    assert len(history_passed) == 1
+    assert history_passed[0].question == "First question"
+    assert history_passed[0].generated_sql == "SELECT 1"
 
 
-def test_exception_does_not_append_to_history(
-    service: ChatService, mock_graph: MagicMock
-) -> None:
-    """Spec: unhandled exception — question not appended; history unchanged."""
-    mock_graph.invoke.side_effect = RuntimeError("boom")
-    resp = _run(service.ask(_make_request(question="crash Q", session="s4")))
+def test_cross_session_isolation(service: ChatService, mock_graph: MagicMock) -> None:
+    """Spec: cross-session isolation — session A's history never leaks into session B."""
+    mock_graph.invoke.return_value = _make_state(generated_sql="SELECT 'A'")
+    _run(service.ask(_make_request(question="Question A", session="sess-A")))
 
-    assert resp.session_history == []
+    mock_graph.invoke.return_value = _make_state(generated_sql="SELECT 'B'")
+    _run(service.ask(_make_request(question="Question B", session="sess-B")))
+
+    b_call_kwargs = mock_graph.invoke.call_args_list[1][0][0]
+    history_for_b = b_call_kwargs["conversation_history"]
+    assert history_for_b == []
+    questions_seen = [t.question for t in history_for_b]
+    assert "Question A" not in questions_seen
 
 
 # ---------------------------------------------------------------------------

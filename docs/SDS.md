@@ -236,6 +236,7 @@ The state is a `MessagesState` subclass (`WorkflowState`), so the message histor
 - `insights`
 - `followup_questions`
 - `error_message`
+- `conversation_history` — the current session's prior turns, injected by the Chat Service before the workflow runs so the agents have multi-turn context (see §15, FR-11). Each entry is a compact turn (`question`, `generated_sql`, `insights`; the Follow-Up Agent additionally receives prior `followup_questions`). Result rows are not included.
 
 Tools update these fields by returning a `Command`.
 
@@ -357,7 +358,7 @@ Mapping each `FRS.md` requirement to the design element that satisfies it.
 | FR-8 — single-value plain-language answer | Visualization Agent written-answer path (single 1×1 result → sentence) |
 | FR-9 — actionable insights grounded in data | Insight Agent (§6.3) subagent (§7.2) |
 | FR-10 — suggested follow-up questions | Follow-Up Agent (§6.4) subagent (§7.2) |
-| FR-11 — session query history | Streamlit UI generates a UUID4 `session_uuid` on first load (`st.session_state`) and includes it in every API request; `app/services/chat_service.py` holds an in-memory `dict[session_uuid → list[question]]` and appends each successfully answered question; history is never written to the database; response payload includes the session history list for the UI to render |
+| FR-11 — session conversation history | Streamlit UI generates a UUID4 `session_uuid` on first load (`st.session_state`), includes it in every API request, and renders the conversation in chat style (turns top-to-bottom, chat input at the bottom); `app/services/chat_service.py` holds an in-memory `dict[session_uuid → list[ConversationTurn]]`, appends each successfully answered turn, and before each run injects only that session's prior turns into `WorkflowState.conversation_history` as multi-turn context for the agents (`question` + `generated_sql` + `insights`; the Follow-Up Agent also gets prior `followup_questions`; result rows are not sent). History is process-scoped, never written to the database, and never shared across sessions. See issue #9 (`docs/issues/09-conversation-history.md`) |
 | FR-12 — export results as CSV | `st.download_button` in `website/app.py` multi-row path; exports `query_results_<timestamp>.csv` (UTF-8, no row index); absent for single-scalar (1×1) metric path |
 | API transport (all FRs) | FastAPI routes (`app/routes/`) + Chat Service (`app/services/chat_service.py`) (§9.3) |
 | Validation (FRS §9) — block non-read-only SQL | SQL Agent `validate_sql` internal tool + `app/utils/validators.py`; allows `SELECT` only |

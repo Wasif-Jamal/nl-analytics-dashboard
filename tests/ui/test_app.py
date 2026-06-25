@@ -27,14 +27,23 @@ def _mock_response(data: dict) -> MagicMock:
     return m
 
 
+def _find_unknown_elements(node, label: str) -> list:
+    """Recursively find UnknownElement nodes with the given label."""
+    results = []
+    for child in node.children.values():
+        if (
+            isinstance(child, UnknownElement)
+            and getattr(child.proto, "label", "") == label
+        ):
+            results.append(child)
+        if hasattr(child, "children"):
+            results.extend(_find_unknown_elements(child, label))
+    return results
+
+
 def _download_buttons(at: AppTest) -> list:
-    """Return UnknownElements with label 'Download CSV' from the main block."""
-    return [
-        v
-        for v in at.main.children.values()
-        if isinstance(v, UnknownElement)
-        and getattr(v.proto, "label", "") == "Download CSV"
-    ]
+    """Return UnknownElements with label 'Download CSV' from the app tree."""
+    return _find_unknown_elements(at.main, "Download CSV")
 
 
 def _success_data(question: str = "Show monthly sales") -> dict:
@@ -46,8 +55,18 @@ def _success_data(question: str = "Show monthly sales") -> dict:
         "columns": ["month", "sales"],
         "row_count": 1,
         "error_message": None,
-        "session_history": [question],
     }
+
+
+def _submit(at: AppTest, question: str, mock_data: dict | None = None) -> None:
+    """Submit a question via chat_input, optionally mocking the HTTP response."""
+    if mock_data is not None:
+        with patch("httpx.post", return_value=_mock_response(mock_data)):
+            at.chat_input[0].set_value(question)
+            at.run()
+    else:
+        at.chat_input[0].set_value(question)
+        at.run()
 
 
 # ---------------------------------------------------------------------------
@@ -76,32 +95,39 @@ def test_session_uuid_stable_across_reruns() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Tests — spec: question-submission
+# Tests — spec: question-submission (chat layout)
 # ---------------------------------------------------------------------------
 
 
-def test_empty_question_shows_info_prompt() -> None:
-    """Spec: empty question submitted — inline prompt shown, no HTTP call."""
+def test_chat_input_present_on_load() -> None:
+    """Spec: question-submission — st.chat_input widget present on first load."""
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.button[0].click()
-    at.run()
 
-    assert len(at.info) > 0
-    assert any("Please enter a question" in str(i.value) for i in at.info)
-    assert len(at.warning) == 0
+    assert len(at.chat_input) > 0
 
 
-def test_whitespace_question_shows_info_prompt() -> None:
-    """Spec: whitespace-only question — treated as empty, prompt shown."""
+def test_chat_layout_user_message_rendered() -> None:
+    """Spec: question-submission — user question rendered in the chat transcript."""
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("   ")
-    at.button[0].click()
+
+    _submit(at, "Show monthly sales", _success_data())
+
+    assert any("Show monthly sales" in str(m.value) for m in at.markdown)
+
+
+def test_turns_accumulated_in_session_state() -> None:
+    """Spec: question-submission — each answered turn is appended to session_state.turns."""
+    at = AppTest.from_file(APP_PATH)
     at.run()
 
-    assert len(at.info) > 0
-    assert any("Please enter a question" in str(i.value) for i in at.info)
+    _submit(at, "Show monthly sales", _success_data("Show monthly sales"))
+    assert len(at.session_state["turns"]) == 1
+    assert at.session_state["turns"][0]["question"] == "Show monthly sales"
+
+    _submit(at, "Show profit by region", _success_data("Show profit by region"))
+    assert len(at.session_state["turns"]) == 2
 
 
 # ---------------------------------------------------------------------------
@@ -113,11 +139,8 @@ def test_successful_response_shows_sql_expander() -> None:
     """Spec: SQL present in response — st.expander with 'Generated SQL' label rendered."""
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show monthly sales")
 
-    with patch("httpx.post", return_value=_mock_response(_success_data())):
-        at.button[0].click()
-        at.run()
+    _submit(at, "Show monthly sales", _success_data())
 
     assert len(at.expander) > 0
     assert any("Generated SQL" in str(e.label) for e in at.expander)
@@ -130,11 +153,8 @@ def test_no_sql_expander_when_generated_sql_none() -> None:
 
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show monthly sales")
 
-    with patch("httpx.post", return_value=_mock_response(data)):
-        at.button[0].click()
-        at.run()
+    _submit(at, "Show monthly sales", data)
 
     assert len(at.expander) == 0
 
@@ -148,11 +168,8 @@ def test_successful_response_shows_dataframe() -> None:
     """Spec: rows present in response — st.dataframe rendered."""
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show monthly sales")
 
-    with patch("httpx.post", return_value=_mock_response(_success_data())):
-        at.button[0].click()
-        at.run()
+    _submit(at, "Show monthly sales", _success_data())
 
     assert len(at.dataframe) > 0
 
@@ -173,16 +190,12 @@ def test_single_scalar_result_shows_written_answer_not_dataframe() -> None:
             "written_answer": "Total distinct customers is 736.",
         },
         "error_message": None,
-        "session_history": ["How many customers do we have?"],
     }
 
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("How many customers do we have?")
 
-    with patch("httpx.post", return_value=_mock_response(data)):
-        at.button[0].click()
-        at.run()
+    _submit(at, "How many customers do we have?", data)
 
     assert len(at.info) == 1
     assert "736" in at.info[0].value
@@ -202,16 +215,12 @@ def test_backend_error_message_shows_warning() -> None:
         "generated_sql": None,
         "query_result": None,
         "error_message": error_msg,
-        "session_history": [],
     }
 
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show dragon sales")
 
-    with patch("httpx.post", return_value=_mock_response(data)):
-        at.button[0].click()
-        at.run()
+    _submit(at, "Show dragon sales", data)
 
     assert len(at.warning) > 0
     assert any(error_msg in str(w.value) for w in at.warning)
@@ -223,10 +232,9 @@ def test_connection_error_shows_warning() -> None:
     """Spec: network / connection error — 'Could not connect' warning shown."""
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show monthly sales")
 
     with patch("httpx.post", side_effect=httpx.ConnectError("connection refused")):
-        at.button[0].click()
+        at.chat_input[0].set_value("Show monthly sales")
         at.run()
 
     assert len(at.warning) > 0
@@ -234,19 +242,16 @@ def test_connection_error_shows_warning() -> None:
 
 
 def test_usable_after_network_error() -> None:
-    """Spec: usable after failure — text input and submit button still present."""
+    """Spec: usable after failure — chat_input still present after a connection error."""
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show monthly sales")
 
     with patch("httpx.post", side_effect=httpx.ConnectError("connection refused")):
-        at.button[0].click()
+        at.chat_input[0].set_value("Show monthly sales")
         at.run()
 
-    # Warning was shown; inputs are still present for the next question.
     assert len(at.warning) > 0
-    assert len(at.text_input) > 0
-    assert len(at.button) > 0
+    assert len(at.chat_input) > 0
 
 
 # ---------------------------------------------------------------------------
@@ -258,11 +263,8 @@ def test_csv_download_button_present_with_results() -> None:
     """Spec: results present — download button visible with label 'Download CSV'."""
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show monthly sales")
 
-    with patch("httpx.post", return_value=_mock_response(_success_data())):
-        at.button[0].click()
-        at.run()
+    _submit(at, "Show monthly sales", _success_data())
 
     assert len(_download_buttons(at)) == 1
 
@@ -284,13 +286,12 @@ def test_csv_download_content_matches_query_result() -> None:
 
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show monthly sales")
 
     with (
         patch("httpx.post", return_value=_mock_response(data)),
         patch.object(_st, "download_button", side_effect=capture_and_call),
     ):
-        at.button[0].click()
+        at.chat_input[0].set_value("Show monthly sales")
         at.run()
 
     assert captured.get("data") == expected
@@ -315,15 +316,11 @@ def test_csv_download_button_absent_for_scalar_result() -> None:
             "written_answer": "Total distinct customers is 736.",
         },
         "error_message": None,
-        "session_history": ["How many customers do we have?"],
     }
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("How many customers do we have?")
 
-    with patch("httpx.post", return_value=_mock_response(data)):
-        at.button[0].click()
-        at.run()
+    _submit(at, "How many customers do we have?", data)
 
     assert len(at.info) == 1
     assert len(_download_buttons(at)) == 0
@@ -336,15 +333,11 @@ def test_csv_download_button_absent_without_results() -> None:
         "generated_sql": None,
         "query_result": None,
         "error_message": "Unable to identify requested entities.",
-        "session_history": [],
     }
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show dragon sales")
 
-    with patch("httpx.post", return_value=_mock_response(error_data)):
-        at.button[0].click()
-        at.run()
+    _submit(at, "Show dragon sales", error_data)
 
     assert len(_download_buttons(at)) == 0
 
@@ -372,30 +365,23 @@ def test_chart_rendered_with_png_download_button() -> None:
             "title": "Sales by Month",
         },
         "error_message": None,
-        "session_history": ["Show sales by month"],
     }
 
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show sales by month")
 
     with (
         patch("httpx.post", return_value=_mock_response(data)),
         patch("plotly.io.to_image", return_value=b"fakepng"),
     ):
-        at.button[0].click()
+        at.chat_input[0].set_value("Show sales by month")
         at.run()
 
     # Chart path taken — dataframe and CSV download button absent
     assert len(at.dataframe) == 0
     assert len(_download_buttons(at)) == 0
     # Download PNG button rendered
-    png_buttons = [
-        v
-        for v in at.main.children.values()
-        if isinstance(v, UnknownElement)
-        and getattr(v.proto, "label", "") == "Download PNG"
-    ]
+    png_buttons = _find_unknown_elements(at.main, "Download PNG")
     assert len(png_buttons) == 1
     assert len(at.warning) == 0
 
@@ -409,11 +395,8 @@ def test_all_active_response_fields_rendered() -> None:
 
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show monthly sales")
 
-    with patch("httpx.post", return_value=_mock_response(data)):
-        at.button[0].click()
-        at.run()
+    _submit(at, "Show monthly sales", data)
 
     # chart_config=table → dataframe rendered
     assert len(at.dataframe) == 1
@@ -438,11 +421,8 @@ def test_chart_config_table_falls_back_to_dataframe() -> None:
 
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show monthly sales")
 
-    with patch("httpx.post", return_value=_mock_response(data)):
-        at.button[0].click()
-        at.run()
+    _submit(at, "Show monthly sales", data)
 
     # SQL expander and dataframe rendered; no errors.
     assert len(at.expander) == 1
@@ -462,11 +442,8 @@ def test_insights_present_panel_rendered() -> None:
 
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show monthly sales")
 
-    with patch("httpx.post", return_value=_mock_response(data)):
-        at.button[0].click()
-        at.run()
+    _submit(at, "Show monthly sales", data)
 
     assert any("Insights" in str(s.value) for s in at.subheader)
     assert any("Sales peaked in January." in str(m.value) for m in at.markdown)
@@ -484,11 +461,8 @@ def test_insights_absent_no_panel() -> None:
 
         at = AppTest.from_file(APP_PATH)
         at.run()
-        at.text_input[0].set_value("Show monthly sales")
 
-        with patch("httpx.post", return_value=_mock_response(data)):
-            at.button[0].click()
-            at.run()
+        _submit(at, "Show monthly sales", data)
 
         assert not any("Insights" in str(s.value) for s in at.subheader)
 
@@ -504,11 +478,8 @@ def test_insights_not_shown_on_error_path() -> None:
     }
     at = AppTest.from_file(APP_PATH)
     at.run()
-    at.text_input[0].set_value("Show dragon sales")
 
-    with patch("httpx.post", return_value=_mock_response(data)):
-        at.button[0].click()
-        at.run()
+    _submit(at, "Show dragon sales", data)
 
     assert len(at.warning) > 0
     assert not any("Insights" in str(s.value) for s in at.subheader)
