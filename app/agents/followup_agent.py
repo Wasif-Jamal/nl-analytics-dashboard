@@ -27,6 +27,7 @@ from langgraph.graph import MessagesState
 from app.config.log_config import config as log_config
 from app.orchestration.state import WorkflowState
 from app.prompts.followup_prompt import FOLLOWUP_SYSTEM_PROMPT
+from app.schemas.conversation import ConversationTurn
 from app.schemas.sql_result import QueryResult
 from app.tools.followup_tools import FollowupTools
 
@@ -44,12 +45,15 @@ class FollowupAgentState(MessagesState):
         question: The user's natural-language question.
         query_result: Executed query result read by ``generate_followup_questions``
             via ``InjectedState``.
+        conversation_history: Prior successful turns for the current session,
+            forwarded from ``WorkflowState`` by ``node()``.
         followup_questions: Populated by ``generate_followup_questions``; propagated
             to ``WorkflowState`` by ``node()``.
     """
 
     question: str
     query_result: Optional[QueryResult]
+    conversation_history: Optional[list[ConversationTurn]]
     followup_questions: Optional[list[str]]
 
 
@@ -109,6 +113,7 @@ class FollowupAgent:
                 ],
                 "question": state.get("question", ""),
                 "query_result": state.get("query_result"),
+                "conversation_history": state.get("conversation_history") or [],
             }
         )
         return {"followup_questions": result.get("followup_questions")}

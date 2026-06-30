@@ -17,8 +17,8 @@ class AnalyticsResponse(BaseModel):
     All analytics fields default to ``None``; they are populated by the
     relevant agents as those issues land. ``error_message`` is set (and
     analytics fields left ``None``) when the workflow or transport fails.
-    ``session_history`` is always returned and reflects successfully answered
-    questions for the session, ordered oldest-first.
+    Session conversation history is maintained client-side in the UI via
+    ``st.session_state``; the API no longer echoes it back (FR-11).
 
     Attributes:
         question: Echo of the submitted question.
@@ -30,12 +30,10 @@ class AnalyticsResponse(BaseModel):
             ``query_result`` is ``None``.
         row_count: Row count from ``QueryResult.row_count``; ``None`` when
             ``query_result`` is ``None``.
-        chart_config: Visualization config (populated by issue #5).
-        insights: Data-grounded insights (populated by issue #6).
-        followup_questions: Suggested follow-up questions (populated by issue #7).
+        chart_config: Visualization config dict (serialized from ``ChartConfig``).
+        insights: Data-grounded insights from the InsightAgent.
+        followup_questions: Suggested follow-up questions from the FollowupAgent.
         error_message: Standard FRS §10 message on failure; ``None`` on success.
-        session_history: Ordered list of successfully answered questions for
-            this session (never includes errored questions).
     """
 
     question: str
@@ -48,7 +46,6 @@ class AnalyticsResponse(BaseModel):
     insights: Optional[list[str]] = None
     followup_questions: Optional[list[str]] = None
     error_message: Optional[str] = None
-    session_history: list[str] = []
 
 
 class QueryResponse(BaseModel):

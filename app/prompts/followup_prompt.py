@@ -23,6 +23,10 @@ User's original question: {question}
 Data returned (JSON rows):
 {rows_json}
 
+{conversation_history}
+
+{prior_followups}
+
 Guidelines:
 - Each question must be independently executable as a new database query.
 - Questions should drill down into a subset, compare cohorts, extend a trend, or explore details in the data.

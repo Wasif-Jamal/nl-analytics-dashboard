@@ -80,7 +80,10 @@ def test_generate_sql_identifiable():
     mock_llm.with_structured_output.return_value = mock_chain
 
     tools = _make_tools(mock_llm)
-    result = tools.generate_sql.func(question="show total sales by region")
+    result = tools.generate_sql.func(
+        question="show total sales by region",
+        state={"messages": [], "conversation_history": []},
+    )
 
     assert isinstance(result, SQLGenerationOutput)
     assert result.is_identifiable is True
@@ -98,7 +101,10 @@ def test_generate_sql_unidentifiable():
     mock_llm.with_structured_output.return_value = mock_chain
 
     tools = _make_tools(mock_llm)
-    result = tools.generate_sql.func(question="show dragon sales by galaxy")
+    result = tools.generate_sql.func(
+        question="show dragon sales by galaxy",
+        state={"messages": [], "conversation_history": []},
+    )
 
     assert result.is_identifiable is False
 

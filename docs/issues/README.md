@@ -14,7 +14,7 @@ All issues follow the supervisor-over-subagents architecture documented in `docs
 | 6 | [Result Presentation: Charts & Single-Value Answer](06-result-presentation-charts.md) | §6.3, §11; FR-6, FR-7, FR-8 | `area:viz` |
 | 7 | [Insights Generation](07-insights-generation.md) | §6.4; FR-9 | `area:insights` |
 | 8 | [Suggested Follow-Up Questions](08-suggested-followup-questions.md) | §6.5; FR-10 | `area:insights` |
-| 9 | [Query History (session)](09-query-history.md) | §6.7, §7; FR-11 | `area:ui` |
+| 9 | [Conversation History (session)](09-conversation-history.md) | §6.7, §7; FR-11 | `area:ui` |
 | 10 | [Error Handling & Messaging](10-error-handling-messaging.md) | §10, §12 | `area:ui` |
 
 All issues also carry the `enhancement` label.
@@ -28,4 +28,4 @@ All issues also carry the `enhancement` label.
 | 3 | #3 | Streamlit UI (end-to-end NL→SQL→result in browser) |
 | 4 | #4 | SqlAgent refactored to `create_agent()` with internal tools (`generate_sql`, `validate_sql`, `execute_sql`) |
 | 5 | #6, #7, #8 | Visualization, Insight, Follow-up subagents (extend supervisor; can be parallelised) |
-| 6 | #5, #9, #10 | Results table/CSV export, query history panel, error messaging UI |
+| 6 | #5, #9, #10 | Results table/CSV export, conversation history & chat UI, error messaging UI |

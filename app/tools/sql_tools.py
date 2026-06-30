@@ -10,19 +10,57 @@ Contracts consumed/produced: :class:`~app.schemas.sql_result.SQLGenerationOutput
 (rows stored as ``list[dict]``, written to ``WorkflowState.query_result`` via ``Command``).
 """
 
-from typing import Annotated
+from typing import Annotated, Optional, TypedDict
 
 import httpx
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import InjectedToolCallId, tool
+from langgraph.prebuilt import InjectedState
 from langgraph.types import Command
 
 from app.config.log_config import config as log_config
-from app.prompts.sql_prompt import SQL_SYSTEM_PROMPT
+from app.prompts.sql_prompt import SQL_HISTORY_TEMPLATE, SQL_SYSTEM_PROMPT
+from app.schemas.conversation import ConversationTurn
 from app.schemas.sql_result import QueryResult, SQLGenerationOutput
 from app.utils.validators import validate_select_only
 
 logger = log_config.get_logger(__name__)
+
+
+class _SqlToolState(TypedDict, total=False):
+    """Minimal state shape injected into ``generate_sql`` by LangGraph.
+
+    Only the field the tool reads is declared; ``total=False`` so Pydantic
+    never complains about unset fields when the tool is called under
+    ``WorkflowState``.
+    """
+
+    conversation_history: Optional[list[ConversationTurn]]
+
+
+def _format_history(turns: list[ConversationTurn]) -> str:
+    """Render prior conversation turns as a compact string for the SQL prompt.
+
+    Includes question, generated SQL, and up to two key insights per turn.
+    Result rows are never included (keeps context bounded).
+
+    Args:
+        turns: Prior ``ConversationTurn`` objects for the current session.
+
+    Returns:
+        Formatted multi-line string, or ``"(none)"`` when the list is empty.
+    """
+    if not turns:
+        return "(none)"
+    lines = []
+    for i, t in enumerate(turns, 1):
+        insights_str = "; ".join(t.insights[:2]) if t.insights else "—"
+        lines.append(
+            f'[{i}] Q: "{t.question}" | SQL: "{t.generated_sql or "—"}"'
+            f" | Key insights: {insights_str}"
+        )
+    return "\n".join(lines)
+
 
 _ERR_UNIDENTIFIED = "Unable to identify requested entities."
 _ERR_VALIDATION = "Generated query could not be validated."
@@ -53,28 +91,43 @@ class SqlTools:
         """Build four ``@tool`` closures and expose as instance attributes."""
 
         @tool
-        def generate_sql(question: str) -> SQLGenerationOutput:
+        def generate_sql(
+            question: str,
+            state: Annotated[_SqlToolState, InjectedState()],
+        ) -> SQLGenerationOutput:
             """Generate a SQLite SELECT query for the question.
 
             Makes a nested ``llm.with_structured_output(SQLGenerationOutput)``
-            call using ``SQL_SYSTEM_PROMPT`` as the system message. Returns a
-            :class:`SQLGenerationOutput` with ``is_identifiable=False`` if the
-            question references entities not present in the schema.
+            call using ``SQL_SYSTEM_PROMPT`` as the system message. Injects
+            prior conversation turns from ``WorkflowState.conversation_history``
+            (via ``InjectedState``) into the prompt so the model can resolve
+            follow-up references. Returns a :class:`SQLGenerationOutput` with
+            ``is_identifiable=False`` if the question references entities not
+            present in the schema.
 
             Args:
                 question: The user's natural-language question.
+                state: Injected ``_SqlToolState`` containing
+                    ``conversation_history`` from ``WorkflowState``; not
+                    supplied by the LLM.
 
             Returns:
                 :class:`SQLGenerationOutput` with ``sql``, ``explanation``,
                 ``is_identifiable``.
             """
+            history_str = _format_history(state.get("conversation_history") or [])
+            messages = [SystemMessage(content=SQL_SYSTEM_PROMPT)]
+            if history_str != "(none)":
+                messages.append(
+                    HumanMessage(
+                        content=SQL_HISTORY_TEMPLATE.format(
+                            conversation_history=history_str
+                        )
+                    )
+                )
+            messages.append(HumanMessage(content=question))
             chain = llm.with_structured_output(SQLGenerationOutput)
-            result: SQLGenerationOutput = chain.invoke(
-                [
-                    SystemMessage(content=SQL_SYSTEM_PROMPT),
-                    HumanMessage(content=question),
-                ]
-            )
+            result: SQLGenerationOutput = chain.invoke(messages)
             logger.debug(
                 "generate_sql: identifiable=%s sql=%.200s",
                 result.is_identifiable,

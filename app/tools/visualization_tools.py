@@ -26,6 +26,7 @@ from langgraph.types import Command
 from app.config.log_config import config as log_config
 from app.prompts.visualization_prompt import VISUALIZATION_INNER_PROMPT
 from app.schemas.chart_config import ChartConfig
+from app.schemas.conversation import ConversationTurn
 from app.schemas.sql_result import QueryResult
 
 logger = log_config.get_logger(__name__)
@@ -36,13 +37,37 @@ _MAX_VIZ_ROWS = 10
 class _VisualizationToolState(TypedDict, total=False):
     """Minimal state shape injected into ``select_visualization`` by LangGraph.
 
-    Only the two fields the tool reads are declared; ``total=False`` so Pydantic
+    Only the fields the tool reads are declared; ``total=False`` so Pydantic
     never complains about unset fields when the tool is called with
     ``VisualizationAgentState``.
     """
 
     question: str
     query_result: Optional[QueryResult]
+    conversation_history: Optional[list[ConversationTurn]]
+
+
+def _format_history(turns: list[ConversationTurn]) -> str:
+    """Render prior conversation turns as a compact string for the visualization prompt.
+
+    Includes question and generated SQL per turn. Result rows are never included.
+
+    Args:
+        turns: Prior ``ConversationTurn`` objects for the current session.
+
+    Returns:
+        Formatted multi-line string, or ``"(none)"`` when the list is empty.
+    """
+    if not turns:
+        return "(none)"
+    lines = ["Prior conversation turns (for context):"]
+    for i, t in enumerate(turns, 1):
+        insights_str = "; ".join(t.insights[:2]) if t.insights else "—"
+        lines.append(
+            f'[{i}] Q: "{t.question}" | SQL: "{t.generated_sql or "—"}"'
+            f" | Key insights: {insights_str}"
+        )
+    return "\n".join(lines)
 
 
 class VisualizationTools:
@@ -100,6 +125,7 @@ class VisualizationTools:
             """
             query_result = state.get("query_result")
             question = state.get("question", "")
+            history_str = _format_history(state.get("conversation_history") or [])
 
             if not query_result or not query_result.rows:
                 logger.info(
@@ -124,6 +150,7 @@ class VisualizationTools:
                     )
                 prompt = VISUALIZATION_INNER_PROMPT.format(
                     question=question,
+                    conversation_history=history_str,
                     columns=", ".join(query_result.columns),
                     row_count=query_result.row_count,
                     rows_json=json.dumps(rows),

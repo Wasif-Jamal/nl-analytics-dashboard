@@ -23,6 +23,7 @@ from langgraph.types import Command
 
 from app.config.log_config import config as log_config
 from app.prompts.insight_prompt import INSIGHT_INNER_PROMPT
+from app.schemas.conversation import ConversationTurn
 from app.schemas.insight_result import InsightOutput
 from app.schemas.sql_result import QueryResult
 
@@ -30,18 +31,43 @@ from app.schemas.sql_result import QueryResult
 class _InsightToolState(TypedDict, total=False):
     """Minimal state shape injected into ``generate_insights`` by LangGraph.
 
-    Only the two fields the tool reads are declared; ``total=False`` so Pydantic
+    Only the fields the tool reads are declared; ``total=False`` so Pydantic
     never complains about unset fields when the tool is called with
     ``InsightAgentState``.
     """
 
     question: str
     query_result: Optional[QueryResult]
+    conversation_history: Optional[list[ConversationTurn]]
 
 
 logger = log_config.get_logger(__name__)
 
 _MAX_INSIGHT_ROWS = 200
+
+
+def _format_history(turns: list[ConversationTurn]) -> str:
+    """Render prior conversation turns as a compact string for the insight prompt.
+
+    Includes question, generated SQL, and up to two key insights per turn.
+    Result rows are never included (keeps context bounded).
+
+    Args:
+        turns: Prior ``ConversationTurn`` objects for the current session.
+
+    Returns:
+        Formatted multi-line string, or ``"(none)"`` when the list is empty.
+    """
+    if not turns:
+        return "(none)"
+    lines = ["Prior conversation turns (for context):"]
+    for i, t in enumerate(turns, 1):
+        insights_str = "; ".join(t.insights[:2]) if t.insights else "—"
+        lines.append(
+            f'[{i}] Q: "{t.question}" | SQL: "{t.generated_sql or "—"}"'
+            f" | Key insights: {insights_str}"
+        )
+    return "\n".join(lines)
 
 
 class InsightTools:
@@ -98,6 +124,7 @@ class InsightTools:
             """
             query_result = state.get("query_result")
             question = state.get("question", "")
+            history_str = _format_history(state.get("conversation_history") or [])
 
             if not query_result or not query_result.rows:
                 logger.info("generate_insights: no data to analyze, skipping LLM call")
@@ -125,6 +152,7 @@ class InsightTools:
                 prompt = INSIGHT_INNER_PROMPT.format(
                     question=question,
                     rows_json=rows_json,
+                    conversation_history=history_str,
                 )
                 result: InsightOutput = llm.with_structured_output(
                     InsightOutput

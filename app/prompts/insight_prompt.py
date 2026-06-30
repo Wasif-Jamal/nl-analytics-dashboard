@@ -23,6 +23,8 @@ User's question: {question}
 Data returned (JSON rows):
 {rows_json}
 
+{conversation_history}
+
 Guidelines:
 - Each insight is one clear, plain-English sentence.
 - Focus on: notable leaders/laggards, concentration, peaks, significant changes, anomalies.

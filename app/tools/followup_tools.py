@@ -25,6 +25,7 @@ from langgraph.types import Command
 
 from app.config.log_config import config as log_config
 from app.prompts.followup_prompt import FOLLOWUP_INNER_PROMPT
+from app.schemas.conversation import ConversationTurn
 from app.schemas.followup_result import FollowupOutput
 from app.schemas.sql_result import QueryResult
 
@@ -32,19 +33,55 @@ from app.schemas.sql_result import QueryResult
 class _FollowupToolState(TypedDict, total=False):
     """Minimal state shape injected into ``generate_followup_questions`` by LangGraph.
 
-    Only the two fields the tool reads are declared; ``total=False`` so Pydantic
+    Only the fields the tool reads are declared; ``total=False`` so Pydantic
     never complains about unset fields when the tool is called with
     ``FollowupAgentState``.
     """
 
     question: str
     query_result: Optional[QueryResult]
+    conversation_history: Optional[list[ConversationTurn]]
 
 
 logger = log_config.get_logger(__name__)
 
-# Follow-up generation needs data shape and representative patterns, not every row — 50 is sufficient and keeps prompt small.
 _MAX_FOLLOWUP_ROWS = 50
+
+
+def _format_history_with_followups(turns: list[ConversationTurn]) -> tuple[str, str]:
+    """Render prior turns for the follow-up prompt.
+
+    Returns two strings:
+    - ``history_str``: compact turn list (Q + SQL) for context.
+    - ``prior_followups_str``: previously suggested questions so the agent
+      avoids re-suggesting them.
+
+    Result rows are never included (keeps context bounded).
+
+    Args:
+        turns: Prior ``ConversationTurn`` objects for the current session.
+
+    Returns:
+        Tuple of ``(history_str, prior_followups_str)``, each ``"(none)"``
+        when the list is empty or the relevant fields are absent.
+    """
+    if not turns:
+        return "(none)", "(none)"
+    history_lines = ["Prior conversation turns (for context):"]
+    followup_lines = ["Previously suggested follow-up questions (do not repeat):"]
+    has_followups = False
+    for i, t in enumerate(turns, 1):
+        history_lines.append(
+            f'[{i}] Q: "{t.question}" | SQL: "{t.generated_sql or "—"}"'
+        )
+        if t.followup_questions:
+            has_followups = True
+            joined = "; ".join(t.followup_questions)
+            followup_lines.append(f"[{i}] {joined}")
+    return (
+        "\n".join(history_lines),
+        "\n".join(followup_lines) if has_followups else "(none)",
+    )
 
 
 class FollowupTools:
@@ -103,6 +140,9 @@ class FollowupTools:
             """
             query_result = state.get("query_result")
             question = state.get("question", "")
+            history_str, prior_followups_str = _format_history_with_followups(
+                state.get("conversation_history") or []
+            )
 
             if not query_result or not query_result.rows:
                 logger.info(
@@ -132,6 +172,8 @@ class FollowupTools:
                 prompt = FOLLOWUP_INNER_PROMPT.format(
                     question=question,
                     rows_json=rows_json,
+                    conversation_history=history_str,
+                    prior_followups=prior_followups_str,
                 )
                 result: FollowupOutput = llm.with_structured_output(
                     FollowupOutput

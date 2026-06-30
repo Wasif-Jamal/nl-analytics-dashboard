@@ -219,7 +219,8 @@ def test_generate_followup_questions_row_truncation():
     call_args = mock_chain.invoke.call_args[0][0]
     prompt_text = call_args[0].content
     after_header = prompt_text.split("Data returned (JSON rows):\n")[1]
-    rows_json_part = after_header.split("\n\nGuidelines:")[0].strip()
+    # rows JSON ends at the first blank line (history sections follow)
+    rows_json_part = after_header.split("\n\n")[0].strip()
     rows_sent = json.loads(rows_json_part)
     assert len(rows_sent) == 50
 
